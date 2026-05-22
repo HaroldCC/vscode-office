@@ -8,6 +8,7 @@ import { antThemeConfig } from './antThemeConfig.ts';
 const Zip = lazy(() => import('./view/compress/Zip.tsx'))
 const Excel = lazy(() => import('./view/excel/Excel.tsx'))
 const ExcelDiff = lazy(() => import('./view/excel/ExcelDiff.tsx'))
+const ExcelMerge = lazy(() => import('./view/excel/ExcelMerge.tsx'))
 const Image = lazy(() => import('./view/image/Image.tsx'))
 const Word = lazy(() => import('./view/word/Word.tsx'))
 const FontViewer = lazy(() => import('./view/fontViewer/FontViewer.tsx'))
@@ -28,6 +29,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           return <Excel />
         case 'excel-diff':
           return <ExcelDiff />
+        case 'excel-merge':
+          return <ExcelMerge />
         case 'zip':
           return <Zip />
         case 'word':

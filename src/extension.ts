@@ -13,6 +13,8 @@ import { OfficeScmContribution } from './provider/vcs/scmContribution';
 import { TortoiseProc } from './provider/tortoise/tortoiseProc';
 import { TortoiseLocator } from './provider/tortoise/tortoiseLocator';
 import { ExternalDiffUriHandler, configureExternalDiff } from './provider/tortoise/externalDiffCommand';
+import { MergeEditorProvider } from './provider/merge/mergeEditorProvider';
+import { MergeDetector } from './provider/merge/mergeDetector';
 const httpExt = require('./bundle/extension');
 
 export async function activate(context: vscode.ExtensionContext) {
@@ -27,10 +29,13 @@ export async function activate(context: vscode.ExtensionContext) {
 	const viewerInstance = new OfficeViewerProvider(context, encodingStatusBar);
 	const markdownEditorProvider = new MarkdownEditorProvider(context, encodingStatusBar);
 	const excelDiffProvider = new ExcelDiffProvider(context);
+	const mergeEditorProvider = new MergeEditorProvider(context);
 
 	GitApiHelper.instance.ensureInit().catch((err) => Output.debug('git api init: ' + err));
 	const scmContribution = new OfficeScmContribution();
 	scmContribution.activate(context).catch((err) => Output.debug('scm init: ' + err));
+	const mergeDetector = new MergeDetector();
+	mergeDetector.activate(context).catch((err) => Output.debug('merge detector init: ' + err));
 
 	vscode.commands.executeCommand('setContext', 'office.isWindows', process.platform === 'win32');
 
@@ -44,6 +49,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand('office.excel.diffWithVCS', (uri) => excelDiffProvider.diffWithVCS(uri)),
 		vscode.commands.registerCommand('office.excel.diffWithFile', (uri) => excelDiffProvider.diffWithFile(uri)),
 		vscode.commands.registerCommand('office.excel.diffWithRevision', (uri) => excelDiffProvider.diffWithRevision(uri)),
+		vscode.commands.registerCommand('office.merge.openConflictEditor', (uri) => mergeEditorProvider.openConflictEditor(uri)),
 		vscode.commands.registerCommand('office.tortoise.svnLog', (uri?: vscode.Uri) => runTortoise('svn', 'log', uri)),
 		vscode.commands.registerCommand('office.tortoise.gitLog', (uri?: vscode.Uri) => runTortoise('git', 'log', uri)),
 		vscode.commands.registerCommand('office.tortoise.svnDiff', (uri?: vscode.Uri) => runTortoise('svn', 'diff', uri)),

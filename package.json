@@ -190,6 +190,12 @@
 				"command": "office.tortoise.refreshLocator",
 				"title": "Refresh Tortoise Path Cache",
 				"category": "Office Viewer"
+			},
+			{
+				"command": "office.merge.openConflictEditor",
+				"title": "Open 3-Way Merge Editor",
+				"category": "Office Viewer",
+				"icon": "$(git-merge)"
 			}
 		],
 		"keybindings": [
@@ -312,6 +318,11 @@
 					"command": "office.tortoise.gitBlame",
 					"when": "office.isWindows && config.vscode-office.tortoise.enabled && resourceExtname =~ /\\.(xlsx|xls|csv|xlsm|ods)/i",
 					"group": "4_tortoise@6"
+				},
+				{
+					"command": "office.merge.openConflictEditor",
+					"when": "resourceExtname =~ /\\.(xlsx|xls|csv|xlsm|ods)/i",
+					"group": "3_compare@5"
 				}
 			]
 		},
@@ -630,6 +641,11 @@
 					"type": "string",
 					"default": "",
 					"description": "Path to TortoiseGitProc.exe. Leave empty for auto-detection."
+				},
+				"vscode-office.merge.autoPromptOnConflict": {
+					"type": "boolean",
+					"default": true,
+					"description": "Auto-prompt to open Office Merge Editor when xlsx/csv conflicts appear."
 				}
 			}
 		}

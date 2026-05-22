@@ -1,0 +1,135 @@
+.excel-merge-viewer {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #fff;
+}
+
+.excel-merge-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 16px;
+    background: #fafafa;
+    border-bottom: 1px solid #e8e8e8;
+    flex-shrink: 0;
+    height: 44px;
+    gap: 12px;
+
+    .toolbar-left, .toolbar-center, .toolbar-right {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .merge-title {
+        font-weight: 600;
+        font-size: 13px;
+        color: #333;
+    }
+
+    .sheet-select {
+        height: 26px;
+        padding: 0 8px;
+        border: 1px solid #d9d9d9;
+        border-radius: 4px;
+        background: #fff;
+        font-size: 12px;
+    }
+
+    .merge-stat {
+        font-family: monospace;
+        font-size: 12px;
+        padding: 2px 8px;
+        border-radius: 3px;
+    }
+
+    .stat-conflict { background: #fff3cd; color: #856404; }
+    .stat-auto    { background: #d4edda; color: #155724; }
+
+    .merge-btn {
+        height: 28px;
+        padding: 0 12px;
+        border: 1px solid #d9d9d9;
+        border-radius: 4px;
+        background: #fff;
+        font-size: 12px;
+        cursor: pointer;
+        color: #333;
+
+        &:hover { border-color: #40a9ff; color: #1890ff; }
+
+        &.ours-btn:hover     { background: #d4edda; }
+        &.theirs-btn:hover   { background: #cce5ff; }
+        &.both-btn:hover     { background: #e2d9f3; }
+        &.resolved-btn {
+            background: #28a745;
+            color: #fff;
+            border-color: #28a745;
+            font-weight: 600;
+            &:hover { background: #218838; }
+        }
+    }
+}
+
+.excel-merge-panels {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    border-bottom: 2px solid #d0d0d0;
+
+    &.three-col > .merge-panel { flex: 1; }
+}
+
+.merge-panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-right: 1px solid #e0e0e0;
+
+    &:last-child { border-right: none; }
+
+    .panel-header {
+        padding: 4px 12px;
+        background: #f0f0f0;
+        border-bottom: 1px solid #e0e0e0;
+        font-size: 11px;
+        font-weight: 600;
+        color: #666;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        flex-shrink: 0;
+
+        &.ours-header   { background: #d4edda; color: #155724; }
+        &.theirs-header { background: #cce5ff; color: #004085; }
+    }
+
+    .panel-content {
+        flex: 1;
+        overflow: hidden;
+    }
+}
+
+.excel-merge-result {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    flex: 1;
+
+    .panel-header.result-header {
+        background: #fff3cd;
+        color: #856404;
+        padding: 4px 12px;
+        border-bottom: 1px solid #e0e0e0;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .panel-content {
+        flex: 1;
+        overflow: hidden;
+    }
+}
