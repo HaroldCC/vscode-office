@@ -128,12 +128,12 @@ export interface Cell { }
 export interface Sheet { }
 
 export class Spreadsheet {
-    private options: Options;
-    private sheetIndex: number;
-    private datas: DataProxy[];
-    private bottombar: Bottombar | null;
-    private data: DataProxy;
-    private sheet: Sheet;
+    options: Options;
+    sheetIndex: number;
+    datas: DataProxy[];
+    bottombar: Bottombar | null;
+    data: DataProxy;
+    sheet: any;
 
     constructor(selectors: string | HTMLElement, options: Options = {}) {
         let targetEl = selectors;

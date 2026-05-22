@@ -1,6 +1,7 @@
 .excel-viewer {
     min-height: 100vh;
     background-color: white;
+    position: relative;
 
     .ant-tabs{
         user-select: none;
@@ -32,4 +33,61 @@
         background-color: #057c52;
     }
 
+}
+
+.excel-search-bar {
+    position: fixed;
+    top: 0;
+    right: 20px;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 10px;
+    background: #fff;
+    border: 1px solid #d9d9d9;
+    border-top: none;
+    border-radius: 0 0 6px 6px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+
+    input {
+        width: 200px;
+        height: 26px;
+        padding: 2px 8px;
+        border: 1px solid #d9d9d9;
+        border-radius: 4px;
+        outline: none;
+        font-size: 13px;
+
+        &:focus {
+            border-color: #057c52;
+            box-shadow: 0 0 0 2px rgba(5, 124, 82, 0.1);
+        }
+    }
+
+    .excel-search-count {
+        font-size: 12px;
+        color: #666;
+        min-width: 60px;
+        text-align: center;
+        white-space: nowrap;
+    }
+
+    button {
+        width: 26px;
+        height: 26px;
+        border: 1px solid #d9d9d9;
+        border-radius: 4px;
+        background: #fafafa;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+
+        &:hover {
+            background: #f0f0f0;
+            border-color: #057c52;
+        }
+    }
 }

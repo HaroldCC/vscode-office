@@ -738,6 +738,8 @@ function sheetInitEvents() {
   // for selector
   bind(window, 'keydown', (evt) => {
     if (!this.focusing) return;
+    const target = evt.target;
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
     const keyCode = evt.keyCode || evt.which;
     const {
       key, ctrlKey, shiftKey, metaKey,

@@ -12,7 +12,8 @@ const httpExt = require('./bundle/extension');
 export function activate(context: vscode.ExtensionContext) {
 	keepOriginDiff();
 	activeHTTP(context)
-	const viewOption = { webviewOptions: { retainContextWhenHidden: true, enableFindWidget: true } };
+	const viewOption = { webviewOptions: { retainContextWhenHidden: true, enableFindWidget: false } };
+	const viewOptionWithFind = { webviewOptions: { retainContextWhenHidden: true, enableFindWidget: true } };
 	FileUtil.init(context)
 	ReactApp.init(context)
 	const encodingStatusBar = new EncodingStatusBar(context.globalState);
@@ -25,8 +26,8 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand('office.markdown.switch', (uri) => { markdownService.switchEditor(uri) }),
 		vscode.commands.registerCommand('office.markdown.paste', () => { markdownService.loadClipboardImage() }),
 		vscode.commands.registerCommand('office.html.preview', uri => HtmlService.previewHtml(uri, context)),
-		vscode.window.registerCustomEditorProvider("cweijan.markdownViewer", markdownEditorProvider, viewOption),
-		vscode.window.registerCustomEditorProvider("cweijan.markdownViewer.optional", markdownEditorProvider, viewOption),
+		vscode.window.registerCustomEditorProvider("cweijan.markdownViewer", markdownEditorProvider, viewOptionWithFind),
+		vscode.window.registerCustomEditorProvider("cweijan.markdownViewer.optional", markdownEditorProvider, viewOptionWithFind),
 		...viewerInstance.bindCustomEditors(viewOption)
 	);
 }
