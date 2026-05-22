@@ -1,8 +1,9 @@
-import { Spin } from "antd";
+import { message, Spin } from "antd";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { handler } from "../../util/vscode.ts";
 import './ExcelDiff.less';
-import { loadSheets } from "./excel_reader.ts";
+import { loadSheets, detectEncoding } from "./excel_reader.ts";
+import { export_xlsx } from "./excel_writer.ts";
 import { computeDiff, DiffSheetData } from "./excel_diff.ts";
 import Spreadsheet from './x-spreadsheet/index';
 
@@ -24,8 +25,10 @@ export default function ExcelDiff() {
     const changeRowsRef = useRef<number[]>([]);
     const diffDataRef = useRef<{ currentPath: string; baseData: string; ext: string } | null>(null);
     const sheetsRef = useRef<{ left: DiffSheetData[]; right: DiffSheetData[] } | null>(null);
+    const currentBufferRef = useRef<ArrayBuffer | null>(null);
+    const workbookRef = useRef<any>(null);
 
-    const renderDiff = useCallback((currentPath: string, baseData: string, ext: string, enc: string) => {
+    const renderDiff = useCallback((currentPath: string, baseData: string, ext: string, enc: string, autoDetect: boolean = false) => {
         setLoading(true);
         const leftContainer = document.getElementById('diff-left');
         const rightContainer = document.getElementById('diff-right');
@@ -33,6 +36,19 @@ export default function ExcelDiff() {
         fetch(currentPath)
             .then(res => res.arrayBuffer())
             .then(currentBuffer => {
+                let effectiveEncoding = enc;
+
+                // Auto-detect encoding for CSV
+                if (autoDetect && ext?.match(/csv/i)) {
+                    const detected = detectEncoding(currentBuffer);
+                    if (detected.confidence >= 0.7) {
+                        effectiveEncoding = detected.encoding;
+                        setEncoding(effectiveEncoding);
+                    }
+                }
+
+                currentBufferRef.current = currentBuffer;
+
                 const binaryStr = atob(baseData);
                 const bytes = new Uint8Array(binaryStr.length);
                 for (let i = 0; i < binaryStr.length; i++) {
@@ -40,8 +56,9 @@ export default function ExcelDiff() {
                 }
                 const baseBuffer = bytes.buffer;
 
-                const baseExcel = loadSheets(baseBuffer, ext, enc);
-                const currentExcel = loadSheets(currentBuffer, ext, enc);
+                const baseExcel = loadSheets(baseBuffer, ext, effectiveEncoding);
+                const currentExcel = loadSheets(currentBuffer, ext, effectiveEncoding);
+                workbookRef.current = currentExcel.workbook || null;
                 const diffResult = computeDiff(baseExcel, currentExcel);
 
                 setStats(diffResult.stats);
@@ -54,7 +71,7 @@ export default function ExcelDiff() {
                 setChangeIndex(-1);
 
                 renderSide(leftContainer!, diffResult.leftSheets, 'left');
-                renderSide(rightContainer!, diffResult.rightSheets, 'right');
+                renderSide(rightContainer!, diffResult.rightSheets, 'right', true);
                 setupScrollSync(leftContainer!, rightContainer!);
 
                 setLoading(false);
@@ -69,17 +86,31 @@ export default function ExcelDiff() {
         handler.on("openDiff", ({ currentPath, baseData, ext, encoding: enc }) => {
             diffDataRef.current = { currentPath, baseData, ext };
             setEncoding(enc || 'utf-8');
-            renderDiff(currentPath, baseData, ext, enc || 'utf-8');
+            renderDiff(currentPath, baseData, ext, enc || 'utf-8', true);
+        }).on("saveDone", () => {
+            message.success({ duration: 1, content: 'Save done' });
         }).emit("init");
+
+        const onKeydown = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.code === 'KeyS') {
+                e.preventDefault();
+                const ss = rightRef.current;
+                if (ss && diffDataRef.current) {
+                    export_xlsx(ss, diffDataRef.current.ext, workbookRef.current);
+                }
+            }
+        };
+        window.addEventListener('keydown', onKeydown);
+        return () => window.removeEventListener('keydown', onKeydown);
     }, [renderDiff]);
 
-    function renderSide(container: HTMLElement, sheets: DiffSheetData[], side: 'left' | 'right') {
+    function renderSide(container: HTMLElement, sheets: DiffSheetData[], side: 'left' | 'right', editable: boolean = false) {
         container.innerHTML = '';
         const maxRows = Math.max(...sheets.map(s => s.maxRows));
         const maxCols = Math.max(...sheets.map(s => s.maxCols));
 
         const spreadSheet = new Spreadsheet(container, {
-            mode: 'read',
+            mode: editable ? 'edit' : 'read',
             showToolbar: false,
             showBottomBar: sheets.length > 1,
             row: { len: maxRows + 20, height: 30 },
@@ -253,7 +284,7 @@ export default function ExcelDiff() {
                 </div>
                 <div className="excel-diff-divider"></div>
                 <div className="excel-diff-panel">
-                    <div className="panel-header">CURRENT (Working)</div>
+                    <div className="panel-header">CURRENT (Working - Editable, Ctrl+S to save)</div>
                     <div id="diff-right" className="panel-content"></div>
                 </div>
             </div>

@@ -94,9 +94,9 @@ export class ExcelDiffProvider {
             .with({ query: `nonce=${Date.now()}` }).toString();
         const baseData = baseBuffer.toString('base64');
 
-        // Listen for init from the webview
-        panel.webview.onDidReceiveMessage((message) => {
-            if (message.type === 'init') {
+        // Listen for messages from the webview
+        panel.webview.onDidReceiveMessage(async (msg) => {
+            if (msg.type === 'init') {
                 panel.webview.postMessage({
                     type: 'openDiff',
                     content: {
@@ -108,6 +108,22 @@ export class ExcelDiffProvider {
                         currentLabel: 'Working',
                     }
                 });
+            } else if (msg.type === 'save') {
+                try {
+                    const content = msg.content;
+                    let data: Uint8Array;
+                    if (typeof content === 'string') {
+                        data = Buffer.from(content, 'utf-8');
+                    } else if (content && content.data) {
+                        data = new Uint8Array(content.data);
+                    } else {
+                        data = new Uint8Array(content);
+                    }
+                    await vscode.workspace.fs.writeFile(currentUri, data);
+                    panel.webview.postMessage({ type: 'saveDone' });
+                } catch (err: any) {
+                    vscode.window.showErrorMessage(`Save failed: ${err.message}`);
+                }
             }
         });
     }
