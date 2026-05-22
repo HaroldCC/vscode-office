@@ -66,17 +66,7 @@ export class ExcelDiffProvider {
     }
 
     private async openDiff(currentUri: vscode.Uri, refA: Ref, refB: Ref) {
-        let bufA: Buffer, bufB: Buffer;
-        try {
-            [bufA, bufB] = await Promise.all([
-                VcsResolver.resolveBuffer(currentUri, refA),
-                VcsResolver.resolveBuffer(currentUri, refB),
-            ]);
-        } catch (err: any) {
-            vscode.window.showErrorMessage(`Failed to load diff content: ${err.message}`);
-            return;
-        }
-
+        // 立即创建 panel,避免点击后"很久才反应"
         const title = `${vscode.workspace.asRelativePath(currentUri)} (${refLabel(refA)} ↔ ${refLabel(refB)})`;
         const panel = vscode.window.createWebviewPanel(
             'excelDiff',
@@ -92,7 +82,30 @@ export class ExcelDiffProvider {
             }
         );
         await ReactApp.view(panel.webview, { route: 'excel-diff' });
-        this.bind(panel, currentUri, refA, refB, bufA, bufB);
+
+        // 后台并行加载两端 buffer,加载完成前 webview 自行显示 loading spinner
+        let bufA: Buffer | undefined;
+        let bufB: Buffer | undefined;
+        let loadErr: string | undefined;
+        const loadPromise = (async () => {
+            try {
+                [bufA, bufB] = await Promise.all([
+                    VcsResolver.resolveBuffer(currentUri, refA),
+                    VcsResolver.resolveBuffer(currentUri, refB),
+                ]);
+            } catch (err: any) {
+                loadErr = err.message || String(err);
+            }
+        })();
+
+        this.bind(panel, currentUri, refA, refB, async () => {
+            await loadPromise;
+            if (loadErr) {
+                vscode.window.showErrorMessage(`Failed to load diff content: ${loadErr}`);
+                return undefined;
+            }
+            return { bufA: bufA!, bufB: bufB! };
+        });
     }
 
     private bind(
@@ -100,11 +113,12 @@ export class ExcelDiffProvider {
         currentUri: vscode.Uri,
         initialRefA: Ref,
         initialRefB: Ref,
-        bufA: Buffer,
-        bufB: Buffer,
+        getInitialBufs: () => Promise<{ bufA: Buffer; bufB: Buffer } | undefined>,
     ) {
         let refA = initialRefA;
         let refB = initialRefB;
+        let bufA: Buffer | undefined;
+        let bufB: Buffer | undefined;
         const ext = currentUri.fsPath.match(/\.[^.]+$/)?.[0] || '.xlsx';
 
         const sendOpen = (leftData: Buffer, rightData: Buffer) => {
@@ -123,6 +137,10 @@ export class ExcelDiffProvider {
 
         panel.webview.onDidReceiveMessage(async (msg) => {
             if (msg.type === 'init') {
+                const initial = await getInitialBufs();
+                if (!initial) return;
+                bufA = initial.bufA;
+                bufB = initial.bufB;
                 sendOpen(bufA, bufB);
                 return;
             }

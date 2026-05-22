@@ -30,15 +30,104 @@ function normalizeEncoding(raw: string): string {
 }
 
 export function detectEncoding(buffer: ArrayBuffer): { encoding: string; confidence: number } {
-    const sample = new Uint8Array(buffer.slice(0, 4096));
-    const result = jschardet.detect(Buffer.from(sample));
-    if (result && result.confidence >= 0.7) {
-        return {
-            encoding: normalizeEncoding(result.encoding),
-            confidence: result.confidence,
-        };
+    const bytes = new Uint8Array(buffer);
+    const n = bytes.length;
+
+    // 1. BOM 优先 — 命中即 100% 确信
+    if (n >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
+        return { encoding: 'utf-8', confidence: 1 };
     }
-    return { encoding: 'utf-8', confidence: result?.confidence || 0 };
+    if (n >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFE) {
+        return { encoding: 'utf-16le', confidence: 1 };
+    }
+    if (n >= 2 && bytes[0] === 0xFE && bytes[1] === 0xFF) {
+        return { encoding: 'utf-16be', confidence: 1 };
+    }
+
+    // 取 64KB 样本(比之前 4KB 更可靠,尤其对短行 CSV 前几 KB 是 ASCII 数字的场景)
+    const sampleSize = Math.min(65536, n);
+    const sample = bytes.subarray(0, sampleSize);
+
+    // 2. 纯 ASCII(无 >= 0x80 字节)→ UTF-8(超集)
+    let hasHighByte = false;
+    for (let i = 0; i < sampleSize; i++) {
+        if (sample[i] >= 0x80) { hasHighByte = true; break; }
+    }
+    if (!hasHighByte) return { encoding: 'utf-8', confidence: 1 };
+
+    // 3. 严格 UTF-8 校验 — 把字节按 UTF-8 多字节规则扫描,所有合法 → 高度可信 UTF-8
+    if (isValidUtf8(sample)) {
+        return { encoding: 'utf-8', confidence: 0.95 };
+    }
+
+    // 4. jschardet 兜底(它对 GB18030/Big5/Shift_JIS 等亚洲编码识别较好)
+    let result;
+    try {
+        result = jschardet.detect(Buffer.from(sample));
+    } catch { result = null; }
+    if (result?.encoding && result.confidence >= 0.8) {
+        return { encoding: normalizeEncoding(result.encoding), confidence: result.confidence };
+    }
+
+    // 5. GBK 启发:中文 Windows CSV 最常见。检测大量 0x81-0xFE 双字节序列
+    if (looksLikeGbk(sample)) {
+        return { encoding: 'gb18030', confidence: 0.7 };
+    }
+
+    // 6. 最后仍不确定,用 jschardet 的结果(即使 confidence 不高)
+    if (result?.encoding) {
+        return { encoding: normalizeEncoding(result.encoding), confidence: result.confidence };
+    }
+    return { encoding: 'utf-8', confidence: 0 };
+}
+
+/** 严格 UTF-8 字节序列校验。返回 true 当且仅当 sample 完全符合 UTF-8 编码规则。 */
+function isValidUtf8(b: Uint8Array): boolean {
+    const n = b.length;
+    let i = 0;
+    while (i < n) {
+        const c = b[i];
+        if (c < 0x80) { i++; continue; }
+        let need: number;
+        if ((c & 0xE0) === 0xC0) need = 1;       // 110xxxxx → 2-byte
+        else if ((c & 0xF0) === 0xE0) need = 2;  // 1110xxxx → 3-byte
+        else if ((c & 0xF8) === 0xF0) need = 3;  // 11110xxx → 4-byte
+        else return false;
+        if (i + need >= n) {
+            // 尾部不完整(可能样本截断);允许只剩最后一个不完整字符
+            return i + need < n + need;
+        }
+        for (let k = 1; k <= need; k++) {
+            if ((b[i + k] & 0xC0) !== 0x80) return false;
+        }
+        i += need + 1;
+    }
+    return true;
+}
+
+/** GBK/GB18030 启发:大部分高位字节出现在 0x81-0xFE 范围且成对(双字节字符) */
+function looksLikeGbk(b: Uint8Array): boolean {
+    const n = b.length;
+    let total = 0, gbkPairs = 0, bad = 0;
+    let i = 0;
+    while (i < n) {
+        const c = b[i];
+        if (c < 0x80) { i++; continue; }
+        total++;
+        if (c >= 0x81 && c <= 0xFE && i + 1 < n) {
+            const c2 = b[i + 1];
+            // GBK 双字节范围:第二个字节 0x40-0x7E 或 0x80-0xFE
+            if ((c2 >= 0x40 && c2 <= 0x7E) || (c2 >= 0x80 && c2 <= 0xFE)) {
+                gbkPairs++;
+                i += 2;
+                continue;
+            }
+        }
+        bad++;
+        i++;
+    }
+    if (total === 0) return false;
+    return gbkPairs / total > 0.85 && bad / total < 0.05;
 }
 
 /**

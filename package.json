@@ -617,16 +617,6 @@
 					"maximum": 100,
 					"description": "How many commits back to scan when computing cell blame."
 				},
-				"vscode-office.scm.enableOfficePanel": {
-					"type": "boolean",
-					"default": true,
-					"description": "Show a dedicated SCM panel for Office files (xlsx/csv/...)."
-				},
-				"vscode-office.scm.includedExtensions": {
-					"type": "array",
-					"default": ["xlsx", "xlsm", "xls", "csv", "ods"],
-					"description": "File extensions included in the Office SCM panel."
-				},
 				"vscode-office.tortoise.enabled": {
 					"type": "boolean",
 					"default": true,

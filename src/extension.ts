@@ -9,7 +9,7 @@ import { Output } from './common/Output';
 import { FileUtil } from './common/fileUtil';
 import { ReactApp } from './common/reactApp';
 import { GitApiHelper } from './provider/vcs/gitApi';
-import { OfficeScmContribution } from './provider/vcs/scmContribution';
+import { GitDiffInterceptor } from './provider/vcs/gitDiffInterceptor';
 import { TortoiseProc } from './provider/tortoise/tortoiseProc';
 import { TortoiseLocator } from './provider/tortoise/tortoiseLocator';
 import { ExternalDiffUriHandler, configureExternalDiff } from './provider/tortoise/externalDiffCommand';
@@ -32,8 +32,8 @@ export async function activate(context: vscode.ExtensionContext) {
 	const mergeEditorProvider = new MergeEditorProvider(context);
 
 	GitApiHelper.instance.ensureInit().catch((err) => Output.debug('git api init: ' + err));
-	const scmContribution = new OfficeScmContribution();
-	scmContribution.activate(context).catch((err) => Output.debug('scm init: ' + err));
+	const gitDiffInterceptor = new GitDiffInterceptor(excelDiffProvider);
+	gitDiffInterceptor.activate(context);
 	const mergeDetector = new MergeDetector();
 	mergeDetector.activate(context).catch((err) => Output.debug('merge detector init: ' + err));
 

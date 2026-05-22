@@ -26,6 +26,7 @@ export interface DiffResult {
 
 type AlignedRow =
     | { type: 'match'; baseRi: number; currRi: number }
+    | { type: 'modified'; baseRi: number; currRi: number }
     | { type: 'added'; currRi: number }
     | { type: 'deleted'; baseRi: number };
 
@@ -211,6 +212,100 @@ function chunkedAlign(baseFP: string[], currFP: string[], chunkSize: number = 50
     return aligned;
 }
 
+/**
+ * Post-process aligned rows: when a contiguous block of `deleted` rows is followed
+ * (or preceded) by a contiguous block of `added` rows, pair them up as `modified`
+ * if they appear to be edits of each other (similarity threshold).
+ *
+ * 修复"修改一个 cell 显示为整行删除+整行新增"的问题。
+ */
+function pairAddDelAsModified(aligned: AlignedRow[], baseFP: string[], currFP: string[]): AlignedRow[] {
+    const out: AlignedRow[] = [];
+    let i = 0;
+    while (i < aligned.length) {
+        if (aligned[i].type === 'deleted') {
+            // 收集相邻 deleted 块
+            const delBlock: AlignedRow[] = [];
+            while (i < aligned.length && aligned[i].type === 'deleted') {
+                delBlock.push(aligned[i]);
+                i++;
+            }
+            // 紧跟 added 块?
+            const addBlock: AlignedRow[] = [];
+            while (i < aligned.length && aligned[i].type === 'added') {
+                addBlock.push(aligned[i]);
+                i++;
+            }
+            if (addBlock.length === 0) {
+                out.push(...delBlock);
+                continue;
+            }
+            // 尝试两两配对(贪心:按位置顺序对应 row;两端最大相似度)
+            const pairs = pairBlocks(delBlock, addBlock, baseFP, currFP);
+            out.push(...pairs);
+        } else if (aligned[i].type === 'added') {
+            // 单独的 added(前面没有 deleted),保持
+            const addBlock: AlignedRow[] = [];
+            while (i < aligned.length && aligned[i].type === 'added') {
+                addBlock.push(aligned[i]);
+                i++;
+            }
+            // 但 added 后紧跟 deleted 也算反向配对
+            const delBlock: AlignedRow[] = [];
+            while (i < aligned.length && aligned[i].type === 'deleted') {
+                delBlock.push(aligned[i]);
+                i++;
+            }
+            if (delBlock.length === 0) {
+                out.push(...addBlock);
+            } else {
+                const pairs = pairBlocks(delBlock, addBlock, baseFP, currFP);
+                out.push(...pairs);
+            }
+        } else {
+            out.push(aligned[i]);
+            i++;
+        }
+    }
+    return out;
+}
+
+/** 两个块按位置配对,相似度 ≥ 0.5 视为 modified */
+function pairBlocks(delBlock: AlignedRow[], addBlock: AlignedRow[], baseFP: string[], currFP: string[]): AlignedRow[] {
+    const out: AlignedRow[] = [];
+    const m = Math.min(delBlock.length, addBlock.length);
+    for (let k = 0; k < m; k++) {
+        const d = delBlock[k] as { type: 'deleted'; baseRi: number };
+        const a = addBlock[k] as { type: 'added'; currRi: number };
+        const sim = similarity(baseFP[d.baseRi], currFP[a.currRi]);
+        if (sim >= 0.5) {
+            out.push({ type: 'modified', baseRi: d.baseRi, currRi: a.currRi });
+        } else {
+            out.push(d);
+            out.push(a);
+        }
+    }
+    // 剩余的不能配对
+    for (let k = m; k < delBlock.length; k++) out.push(delBlock[k]);
+    for (let k = m; k < addBlock.length; k++) out.push(addBlock[k]);
+    return out;
+}
+
+/** cell 级相似度:相同 cell 数 / 总 cell 数(以 '|' 为分隔符的 fingerprint) */
+function similarity(a: string, b: string): number {
+    if (a === b) return 1;
+    if (!a || !b) return 0;
+    const ca = a.split('|');
+    const cb = b.split('|');
+    const len = Math.max(ca.length, cb.length);
+    if (len === 0) return 0;
+    let same = 0;
+    for (let i = 0; i < len; i++) {
+        if ((ca[i] || '') === (cb[i] || '')) same++;
+    }
+    return same / len;
+}
+
 // ================ Core Diff ================
 
 function getSheetRows(sheet: any): { [key: number]: any } {
@@ -247,7 +342,9 @@ function diffSheet(
     }
 
     // Align rows using chunked LCS
-    const aligned = chunkedAlign(baseFP, currFP);
+    let aligned = chunkedAlign(baseFP, currFP);
+    // 把"deleted+added"相邻对升级为"modified"以触发 cell 级 diff
+    aligned = pairAddDelAsModified(aligned, baseFP, currFP);
 
     // Build output sheet data with highlight styles
     const leftStyles = [STYLE_DELETED, STYLE_MODIFIED_CELL, STYLE_EMPTY_PLACEHOLDER, STYLE_UNCHANGED_IN_MODIFIED_ROW];
@@ -262,7 +359,7 @@ function diffSheet(
 
     let outRi = 0;
     for (const row of aligned) {
-        if (row.type === 'match') {
+        if (row.type === 'match' || row.type === 'modified') {
             const baseRow = baseRows[row.baseRi];
             const currRow = currRows[row.currRi];
             let rowModified = false;
