@@ -38,7 +38,7 @@ export default function ExcelDiff() {
             .then(currentBuffer => {
                 let effectiveEncoding = enc;
 
-                // Auto-detect encoding for CSV
+                // Auto-detect encoding for CSV (fast — only reads 4KB)
                 if (autoDetect && ext?.match(/csv/i)) {
                     const detected = detectEncoding(currentBuffer);
                     if (detected.confidence >= 0.7) {
@@ -49,32 +49,35 @@ export default function ExcelDiff() {
 
                 currentBufferRef.current = currentBuffer;
 
-                const binaryStr = atob(baseData);
-                const bytes = new Uint8Array(binaryStr.length);
-                for (let i = 0; i < binaryStr.length; i++) {
-                    bytes[i] = binaryStr.charCodeAt(i);
-                }
-                const baseBuffer = bytes.buffer;
+                // Use setTimeout to let the loading spinner render before heavy computation
+                setTimeout(() => {
+                    const binaryStr = atob(baseData);
+                    const bytes = new Uint8Array(binaryStr.length);
+                    for (let i = 0; i < binaryStr.length; i++) {
+                        bytes[i] = binaryStr.charCodeAt(i);
+                    }
+                    const baseBuffer = bytes.buffer;
 
-                const baseExcel = loadSheets(baseBuffer, ext, effectiveEncoding);
-                const currentExcel = loadSheets(currentBuffer, ext, effectiveEncoding);
-                workbookRef.current = currentExcel.workbook || null;
-                const diffResult = computeDiff(baseExcel, currentExcel);
+                    const baseExcel = loadSheets(baseBuffer, ext, effectiveEncoding);
+                    const currentExcel = loadSheets(currentBuffer, ext, effectiveEncoding);
+                    workbookRef.current = currentExcel.workbook || null;
+                    const diffResult = computeDiff(baseExcel, currentExcel);
 
-                setStats(diffResult.stats);
-                sheetsRef.current = { left: diffResult.leftSheets, right: diffResult.rightSheets };
+                    setStats(diffResult.stats);
+                    sheetsRef.current = { left: diffResult.leftSheets, right: diffResult.rightSheets };
 
-                // Collect all change rows from current sheet (first sheet)
-                const rows = diffResult.leftSheets[0]?.changeRows || [];
-                changeRowsRef.current = rows;
-                setTotalChanges(rows.length);
-                setChangeIndex(-1);
+                    // Collect all change rows from current sheet (first sheet)
+                    const rows = diffResult.leftSheets[0]?.changeRows || [];
+                    changeRowsRef.current = rows;
+                    setTotalChanges(rows.length);
+                    setChangeIndex(-1);
 
-                renderSide(leftContainer!, diffResult.leftSheets, 'left');
-                renderSide(rightContainer!, diffResult.rightSheets, 'right', true);
-                setupScrollSync(leftContainer!, rightContainer!);
+                    renderSide(leftContainer!, diffResult.leftSheets, 'left');
+                    renderSide(rightContainer!, diffResult.rightSheets, 'right', true);
+                    setupScrollSync(leftContainer!, rightContainer!);
 
-                setLoading(false);
+                    setLoading(false);
+                }, 16);
             })
             .catch(err => {
                 console.error('Diff failed:', err);
@@ -89,6 +92,11 @@ export default function ExcelDiff() {
             renderDiff(currentPath, baseData, ext, enc || 'utf-8', true);
         }).on("saveDone", () => {
             message.success({ duration: 1, content: 'Save done' });
+            // Re-render diff after save to reflect changes
+            if (diffDataRef.current) {
+                const { currentPath, baseData, ext } = diffDataRef.current;
+                setTimeout(() => renderDiff(currentPath, baseData, ext, encoding), 300);
+            }
         }).emit("init");
 
         const onKeydown = (e: KeyboardEvent) => {
@@ -96,13 +104,13 @@ export default function ExcelDiff() {
                 e.preventDefault();
                 const ss = rightRef.current;
                 if (ss && diffDataRef.current) {
-                    export_xlsx(ss, diffDataRef.current.ext, workbookRef.current);
+                    export_xlsx(ss, diffDataRef.current.ext, workbookRef.current, encoding);
                 }
             }
         };
         window.addEventListener('keydown', onKeydown);
         return () => window.removeEventListener('keydown', onKeydown);
-    }, [renderDiff]);
+    }, [renderDiff, encoding]);
 
     function renderSide(container: HTMLElement, sheets: DiffSheetData[], side: 'left' | 'right', editable: boolean = false) {
         container.innerHTML = '';

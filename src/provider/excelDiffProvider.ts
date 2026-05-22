@@ -1,5 +1,6 @@
 import { execFile } from 'child_process';
 import { dirname, relative } from 'path';
+import * as iconv from 'iconv-lite';
 import * as vscode from 'vscode';
 import { ReactApp } from '../common/reactApp';
 
@@ -112,8 +113,13 @@ export class ExcelDiffProvider {
                 try {
                     const content = msg.content;
                     let data: Uint8Array;
-                    if (typeof content === 'string') {
+                    if (content && typeof content === 'object' && content.text && content.encoding) {
+                        // CSV with non-UTF-8 encoding
+                        data = iconv.encode(content.text, content.encoding);
+                    } else if (typeof content === 'string') {
                         data = Buffer.from(content, 'utf-8');
+                    } else if (Array.isArray(content)) {
+                        data = new Uint8Array(content);
                     } else if (content && content.data) {
                         data = new Uint8Array(content.data);
                     } else {

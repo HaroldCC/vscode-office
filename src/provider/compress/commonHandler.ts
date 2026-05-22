@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as iconv from 'iconv-lite';
 import { Handler } from "@/common/handler";
 import { EncodingStatusBar } from "@/common/encodingStatusBar";
 import { Uri, workspace } from 'vscode';
@@ -35,7 +36,15 @@ export function handleCommonEvent(uri: Uri, handler: Handler, encodingStatusBar?
             }
         })
         .on("save", async (content) => {
-            const res = Array.isArray(content) ? new Uint8Array(content) : new TextEncoder().encode(content)
+            let res: Uint8Array;
+            if (content && typeof content === 'object' && content.text && content.encoding) {
+                // CSV with non-UTF-8 encoding: encode text using iconv-lite
+                res = iconv.encode(content.text, content.encoding);
+            } else if (Array.isArray(content)) {
+                res = new Uint8Array(content);
+            } else {
+                res = new TextEncoder().encode(content);
+            }
             await workspace.fs.writeFile(uri, res)
             fileSaveTimes[uri.toString()] = Date.now();
             handler.emit("saveDone")

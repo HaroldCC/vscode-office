@@ -251,7 +251,7 @@ export default function Excel() {
                 }
                 const onKeydown = (e: KeyboardEvent) => {
                     if ((e.ctrlKey || e.metaKey) && e.code == "KeyS") {
-                        export_xlsx(spreadSheet, ext, workbookRef.current);
+                        export_xlsx(spreadSheet, ext, workbookRef.current, currentEncodingRef.current);
                     }
                     if ((e.ctrlKey || e.metaKey) && e.code == "KeyF") {
                         e.preventDefault();

@@ -136,8 +136,9 @@ function incrementalSave(spreadSheet: Spreadsheet, originalWb: any, extName: str
  * Export spreadsheet data back to file format.
  * Uses incremental save when original workbook is available (preserves more metadata).
  * Falls back to full rebuild otherwise.
+ * @param encoding - For CSV files, encode output in the same encoding as the source.
  */
-export function export_xlsx(spreadSheet: Spreadsheet, extName: string, originalWb?: any) {
+export function export_xlsx(spreadSheet: Spreadsheet, extName: string, originalWb?: any, encoding?: string) {
     extName = extName.replace('.', '');
     if (extName === 'xlsx' || extName === 'xls' || extName === 'ods') {
         if (originalWb) {
@@ -150,6 +151,10 @@ export function export_xlsx(spreadSheet: Spreadsheet, extName: string, originalW
         }
     } else if (extName === "csv") {
         const csvContent = XLSX.utils.sheet_to_csv(dataToSheet(spreadSheet.getData()[0]));
-        handler.emit('save', csvContent);
+        if (encoding && encoding !== 'utf-8') {
+            handler.emit('save', { text: csvContent, encoding });
+        } else {
+            handler.emit('save', csvContent);
+        }
     }
 }
