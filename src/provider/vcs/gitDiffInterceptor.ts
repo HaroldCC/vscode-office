@@ -5,82 +5,78 @@ const OFFICE_RE = /\.(xlsx|xlsm|xls|csv|ods)$/i;
 
 /**
  * 拦截 vscode 原生 git 视图打开 xlsx/csv 时的 textual diff:
- * 当活动编辑器变成 `git:` 或 diff editor 且涉及 office 文件,
- * 关掉该 tab 并以本插件的 diff 面板替代。
- *
- * 取代原本的独立 SCM 面板。
+ * 监听 tab 打开事件,识别 TabInputTextDiff 涉及 office 文件 → 关掉并
+ * 替换为本插件的 diff 面板。
  */
 export class GitDiffInterceptor {
 
     private disposables: vscode.Disposable[] = [];
-    private handling = new Set<string>();
+    private intercepted = new Set<string>();
+    private active = false;
 
     constructor(private excelDiff: ExcelDiffProvider) { }
 
     activate(ctx: vscode.ExtensionContext): void {
+        // 启动几秒后才激活,避免误关用户在启动恢复阶段的 tab
+        setTimeout(() => { this.active = true; }, 800);
         this.disposables.push(
-            vscode.window.onDidChangeActiveTextEditor(ed => this.onActive(ed)),
             vscode.window.tabGroups.onDidChangeTabs(e => {
                 for (const tab of e.opened) this.maybeInterceptTab(tab);
+                for (const tab of e.changed) this.maybeInterceptTab(tab);
             }),
         );
-        // 首次激活时扫描已有 tabs
-        for (const group of vscode.window.tabGroups.all) {
-            for (const tab of group.tabs) this.maybeInterceptTab(tab);
-        }
         ctx.subscriptions.push({ dispose: () => this.disposables.forEach(d => d.dispose()) });
     }
 
-    private onActive(ed?: vscode.TextEditor): void {
-        if (!ed) return;
-        const uri = ed.document.uri;
-        // 原生 git diff 在 git: scheme 打开右侧
-        if (uri.scheme !== 'git' && uri.scheme !== 'gitfs') return;
-        if (!OFFICE_RE.test(uri.path)) return;
-        const realPath = this.gitUriToFsPath(uri);
-        if (!realPath) return;
-        if (this.handling.has(realPath)) return;
-        this.handling.add(realPath);
-        setTimeout(() => this.handling.delete(realPath), 1500);
+    private maybeInterceptTab(tab: vscode.Tab): void {
+        if (!this.active) return;
+        const input = tab.input;
+        if (!input || typeof input !== 'object') return;
 
-        // 关掉这个 textual diff tab(异步,避免触发 onDidChange 死循环)
-        vscode.commands.executeCommand('workbench.action.closeActiveEditor').then(() => {
-            this.excelDiff.diffWithVCS(vscode.Uri.file(realPath));
+        // TabInputTextDiff: 有 original 与 modified 两个 Uri
+        const original = (input as any).original as vscode.Uri | undefined;
+        const modified = (input as any).modified as vscode.Uri | undefined;
+        if (!original || !modified || !(modified instanceof vscode.Uri)) return;
+
+        const candidatePath = OFFICE_RE.test(modified.path) ? modified
+            : OFFICE_RE.test(original.path) ? original
+            : undefined;
+        if (!candidatePath) return;
+
+        const fsPath = this.resolveFsPath(candidatePath, original, modified);
+        if (!fsPath) return;
+        if (this.intercepted.has(fsPath)) return;
+        this.intercepted.add(fsPath);
+        // 同一文件 3 秒内不重复处理(防止 tabs.onDidChange 重复事件)
+        setTimeout(() => this.intercepted.delete(fsPath), 3000);
+
+        // 关闭原生 textual diff tab 再开本插件 diff
+        vscode.window.tabGroups.close(tab, true).then(() => {
+            this.excelDiff.diffWithVCS(vscode.Uri.file(fsPath));
+        }, () => {
+            // 关闭失败也尝试打开
+            this.excelDiff.diffWithVCS(vscode.Uri.file(fsPath));
         });
     }
 
-    private maybeInterceptTab(tab: vscode.Tab): void {
-        const input = tab.input as any;
-        if (!input) return;
-        // TabInputTextDiff: { original: Uri, modified: Uri }
-        if (input.original && input.modified) {
-            const modUri: vscode.Uri = input.modified;
-            const origUri: vscode.Uri = input.original;
-            const target = OFFICE_RE.test(modUri.path) ? modUri : OFFICE_RE.test(origUri.path) ? origUri : undefined;
-            if (!target) return;
-            // 找出真实磁盘文件
-            const fsPath = this.gitUriToFsPath(target) ||
-                (target.scheme === 'file' ? target.fsPath : undefined);
-            if (!fsPath) return;
-            if (this.handling.has(fsPath)) return;
-            this.handling.add(fsPath);
-            setTimeout(() => this.handling.delete(fsPath), 1500);
-
-            vscode.window.tabGroups.close(tab).then(() => {
-                this.excelDiff.diffWithVCS(vscode.Uri.file(fsPath));
-            });
+    /**
+     * 从 git: scheme 的 Uri 解析真实磁盘路径。
+     * vscode.git 的 query 是 JSON: { path: "/abs/...", ref: "HEAD" }
+     */
+    private resolveFsPath(uri: vscode.Uri, original: vscode.Uri, modified: vscode.Uri): string | undefined {
+        // 优先使用 file scheme 那端
+        if (modified.scheme === 'file') return modified.fsPath;
+        if (original.scheme === 'file') return original.fsPath;
+        // 否则解析 git: query
+        for (const u of [uri, modified, original]) {
+            if (u.scheme === 'git' || u.scheme === 'gitfs') {
+                try {
+                    const q = JSON.parse(u.query);
+                    if (q?.path) return q.path;
+                } catch { /* ignore */ }
+            }
         }
-    }
-
-    /** git: URI 的 query 中包含 {"path":...,"ref":...} */
-    private gitUriToFsPath(uri: vscode.Uri): string | undefined {
-        if (uri.scheme === 'file') return uri.fsPath;
-        try {
-            const q = JSON.parse(uri.query);
-            if (q?.path) return q.path;
-        } catch { /* ignore */ }
-        // fallback:把 git: scheme 的 path 当作 fsPath
-        if (uri.path) return uri.path;
+        // fallback: 在已知 workspace 中寻找匹配 basename 的文件
         return undefined;
     }
 }

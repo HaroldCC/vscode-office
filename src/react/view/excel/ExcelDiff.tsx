@@ -77,6 +77,11 @@ export default function ExcelDiff() {
     const currentBufferRef = useRef<ArrayBuffer | null>(null);
     const workbookRef = useRef<any>(null);
 
+    const onlyChangesRef = useRef(onlyChanges);
+    const encodingRef = useRef(encoding);
+    useEffect(() => { onlyChangesRef.current = onlyChanges; }, [onlyChanges]);
+    useEffect(() => { encodingRef.current = encoding; }, [encoding]);
+
     const renderFromBase64 = useCallback((leftData: string, rightData: string, fileExt: string, enc: string, autoDetect: boolean = false) => {
         setLoading(true);
         const leftContainer = document.getElementById('diff-left');
@@ -107,7 +112,7 @@ export default function ExcelDiff() {
                 setStats(diffResult.stats);
                 let leftSheets = diffResult.leftSheets;
                 let rightSheets = diffResult.rightSheets;
-                if (onlyChanges) {
+                if (onlyChangesRef.current) {
                     const filtered = filterDiff(leftSheets, rightSheets);
                     leftSheets = filtered.left;
                     rightSheets = filtered.right;
@@ -129,8 +134,9 @@ export default function ExcelDiff() {
                 setLoading(false);
             }
         }, 16);
-    }, [onlyChanges]);
+    }, []);
 
+    // 仅在挂载时绑定一次消息处理,不让 encoding / onlyChanges 变化导致重新 init
     useEffect(() => {
         handler.on("openDiff", (content: any) => {
             const { leftRef, rightRef, leftData, rightData, ext, encoding: enc } = content;
@@ -150,7 +156,7 @@ export default function ExcelDiff() {
                 setRightRefState(ref);
             }
             const dd = diffDataRef.current;
-            renderFromBase64(dd.leftData, dd.rightData, dd.ext, encoding);
+            renderFromBase64(dd.leftData, dd.rightData, dd.ext, encodingRef.current);
         }).on("blameResult", (payload: any) => {
             setBlamePopover({
                 sheet: payload.sheet,
@@ -163,7 +169,7 @@ export default function ExcelDiff() {
             message.success({ duration: 1, content: 'Save done' });
             if (diffDataRef.current) {
                 const { leftData, rightData, ext } = diffDataRef.current;
-                setTimeout(() => renderFromBase64(leftData, rightData, ext, encoding), 300);
+                setTimeout(() => renderFromBase64(leftData, rightData, ext, encodingRef.current), 300);
             }
         }).emit("init");
 
@@ -172,13 +178,14 @@ export default function ExcelDiff() {
                 e.preventDefault();
                 const ss = rightRef.current;
                 if (ss && diffDataRef.current) {
-                    export_xlsx(ss, diffDataRef.current.ext, workbookRef.current, encoding);
+                    export_xlsx(ss, diffDataRef.current.ext, workbookRef.current, encodingRef.current);
                 }
             }
         };
         window.addEventListener('keydown', onKeydown);
         return () => window.removeEventListener('keydown', onKeydown);
-    }, [renderFromBase64, encoding]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     function renderSide(container: HTMLElement, sheets: DiffSheetData[], side: 'left' | 'right', editable: boolean = false) {
         container.innerHTML = '';
@@ -323,12 +330,16 @@ export default function ExcelDiff() {
     }, []);
 
     const onToggleOnlyChanges = useCallback(() => {
-        setOnlyChanges(v => !v);
-        if (diffDataRef.current) {
-            const { leftData, rightData, ext } = diffDataRef.current;
-            setTimeout(() => renderFromBase64(leftData, rightData, ext, encoding), 16);
-        }
-    }, [renderFromBase64, encoding]);
+        setOnlyChanges(v => {
+            const newVal = !v;
+            onlyChangesRef.current = newVal;
+            if (diffDataRef.current) {
+                const { leftData, rightData, ext } = diffDataRef.current;
+                setTimeout(() => renderFromBase64(leftData, rightData, ext, encodingRef.current), 16);
+            }
+            return newVal;
+        });
+    }, [renderFromBase64]);
 
     const onExportHtml = useCallback(async () => {
         const dr = diffResultRef.current;
