@@ -1,77 +1,76 @@
-import { execFile } from 'child_process';
-import { dirname, relative } from 'path';
 import * as iconv from 'iconv-lite';
 import * as vscode from 'vscode';
 import { ReactApp } from '../common/reactApp';
+import { VcsResolver } from './vcs/vcsResolver';
+import { showRevisionPicker } from './vcs/revisionPicker';
+import { BlameProvider } from './vcs/blameProvider';
+import { Ref, refLabel } from './vcs/types';
 
 export class ExcelDiffProvider {
 
-    private extensionPath: string;
+    private blameProvider = new BlameProvider();
 
-    constructor(private context: vscode.ExtensionContext) {
-        this.extensionPath = context.extensionPath;
-    }
+    constructor(private context: vscode.ExtensionContext) { }
 
-    /**
-     * Compare current file with VCS (git/svn) HEAD version.
-     */
     async diffWithVCS(uri?: vscode.Uri) {
         uri = uri || vscode.window.activeTextEditor?.document.uri;
         if (!uri) {
             vscode.window.showErrorMessage('No file selected for diff.');
             return;
         }
-
-        const filePath = uri.fsPath;
-
-        try {
-            const baseBuffer = await this.getVCSVersion(filePath);
-            if (!baseBuffer) return;
-
-            const baseLabel = 'HEAD';
-            const currentLabel = 'Working';
-            this.openDiffPanel(uri, baseBuffer, `${vscode.workspace.asRelativePath(uri)} (${baseLabel} ↔ ${currentLabel})`);
-        } catch (err: any) {
-            vscode.window.showErrorMessage(`Failed to get VCS version: ${err.message}`);
+        const info = await VcsResolver.detect(uri);
+        if (info.kind === null) {
+            vscode.window.showErrorMessage('File is not tracked by Git or SVN.');
+            return;
         }
+        const refA: Ref = info.kind === 'git' ? { kind: 'head' } : { kind: 'svn-revision', revision: 'PREV' };
+        const refB: Ref = info.kind === 'git' ? { kind: 'working' } : { kind: 'svn-working' };
+        await this.openDiff(uri, refA, refB);
     }
 
-    /**
-     * Compare current file with another user-selected file.
-     */
     async diffWithFile(uri?: vscode.Uri) {
         uri = uri || vscode.window.activeTextEditor?.document.uri;
         if (!uri) {
             vscode.window.showErrorMessage('No file selected for diff.');
             return;
         }
-
-        const ext = uri.fsPath.match(/\.[^.]+$/)?.[0] || '*';
-        const filters: { [key: string]: string[] } = {
-            'Excel/CSV Files': ['xlsx', 'xls', 'xlsm', 'csv', 'ods'],
-        };
-
         const selected = await vscode.window.showOpenDialog({
-            canSelectFiles: true,
-            canSelectMany: false,
-            filters,
+            canSelectFiles: true, canSelectMany: false,
+            filters: { 'Excel/CSV Files': ['xlsx', 'xls', 'xlsm', 'csv', 'ods'] },
             title: 'Select file to compare with',
         });
-
         if (!selected || selected.length === 0) return;
-
-        const baseUri = selected[0];
-        const baseBuffer = await vscode.workspace.fs.readFile(baseUri);
-
-        const baseName = vscode.workspace.asRelativePath(baseUri);
-        const currentName = vscode.workspace.asRelativePath(uri);
-        this.openDiffPanel(uri, Buffer.from(baseBuffer), `${currentName} ↔ ${baseName}`, baseName);
+        const refA: Ref = { kind: 'file', uri: selected[0] };
+        const refB: Ref = { kind: 'working' };
+        await this.openDiff(uri, refA, refB);
     }
 
-    /**
-     * Open the diff webview panel.
-     */
-    private async openDiffPanel(currentUri: vscode.Uri, baseBuffer: Buffer, title: string, baseLabel?: string) {
+    async diffWithRevision(uri?: vscode.Uri) {
+        uri = uri || vscode.window.activeTextEditor?.document.uri;
+        if (!uri) {
+            vscode.window.showErrorMessage('No file selected for diff.');
+            return;
+        }
+        const ref = await showRevisionPicker(uri);
+        if (!ref) return;
+        const info = await VcsResolver.detect(uri);
+        const refB: Ref = info.kind === 'svn' ? { kind: 'svn-working' } : { kind: 'working' };
+        await this.openDiff(uri, ref, refB);
+    }
+
+    private async openDiff(currentUri: vscode.Uri, refA: Ref, refB: Ref) {
+        let bufA: Buffer, bufB: Buffer;
+        try {
+            [bufA, bufB] = await Promise.all([
+                VcsResolver.resolveBuffer(currentUri, refA),
+                VcsResolver.resolveBuffer(currentUri, refB),
+            ]);
+        } catch (err: any) {
+            vscode.window.showErrorMessage(`Failed to load diff content: ${err.message}`);
+            return;
+        }
+
+        const title = `${vscode.workspace.asRelativePath(currentUri)} (${refLabel(refA)} ↔ ${refLabel(refB)})`;
         const panel = vscode.window.createWebviewPanel(
             'excelDiff',
             title,
@@ -80,41 +79,87 @@ export class ExcelDiffProvider {
                 enableScripts: true,
                 retainContextWhenHidden: true,
                 localResourceRoots: [
-                    vscode.Uri.file(this.extensionPath),
+                    vscode.Uri.file(this.context.extensionPath),
                     vscode.Uri.joinPath(currentUri, '..'),
                 ],
             }
         );
+        await ReactApp.view(panel.webview, { route: 'excel-diff' });
+        this.bind(panel, currentUri, refA, refB, bufA, bufB);
+    }
 
-        const webview = panel.webview;
-        await ReactApp.view(webview, { route: 'excel-diff' });
-
-        // Wait a bit for React to mount, then send data
+    private bind(
+        panel: vscode.WebviewPanel,
+        currentUri: vscode.Uri,
+        initialRefA: Ref,
+        initialRefB: Ref,
+        bufA: Buffer,
+        bufB: Buffer,
+    ) {
+        let refA = initialRefA;
+        let refB = initialRefB;
         const ext = currentUri.fsPath.match(/\.[^.]+$/)?.[0] || '.xlsx';
-        const currentPath = webview.asWebviewUri(currentUri)
-            .with({ query: `nonce=${Date.now()}` }).toString();
-        const baseData = baseBuffer.toString('base64');
 
-        // Listen for messages from the webview
+        const sendOpen = (leftData: Buffer, rightData: Buffer) => {
+            panel.webview.postMessage({
+                type: 'openDiff',
+                content: {
+                    leftRef: refA,
+                    rightRef: refB,
+                    leftData: leftData.toString('base64'),
+                    rightData: rightData.toString('base64'),
+                    ext,
+                    encoding: 'utf-8',
+                }
+            });
+        };
+
         panel.webview.onDidReceiveMessage(async (msg) => {
             if (msg.type === 'init') {
+                sendOpen(bufA, bufB);
+                return;
+            }
+            if (msg.type === 'pickRef') {
+                const side: 'left' | 'right' = msg.side === 'left' ? 'left' : 'right';
+                const newRef = await showRevisionPicker(currentUri);
+                if (!newRef) return;
+                let newBuf: Buffer;
+                try {
+                    newBuf = await VcsResolver.resolveBuffer(currentUri, newRef);
+                } catch (err: any) {
+                    vscode.window.showErrorMessage(`Failed to load: ${err.message}`);
+                    return;
+                }
+                if (side === 'left') { refA = newRef; bufA = newBuf; }
+                else { refB = newRef; bufB = newBuf; }
                 panel.webview.postMessage({
-                    type: 'openDiff',
-                    content: {
-                        currentPath,
-                        baseData,
-                        ext,
-                        encoding: 'utf-8',
-                        baseLabel: baseLabel || 'HEAD',
-                        currentLabel: 'Working',
-                    }
+                    type: 'updateSide',
+                    side,
+                    ref: newRef,
+                    data: newBuf.toString('base64'),
                 });
-            } else if (msg.type === 'save') {
+                panel.title = `${vscode.workspace.asRelativePath(currentUri)} (${refLabel(refA)} ↔ ${refLabel(refB)})`;
+                return;
+            }
+            if (msg.type === 'requestBlame') {
+                const result = await this.blameProvider.getCellBlame(
+                    currentUri, msg.sheet, msg.row, msg.col
+                );
+                panel.webview.postMessage({
+                    type: 'blameResult',
+                    sheet: msg.sheet,
+                    row: msg.row,
+                    col: msg.col,
+                    entry: result && 'hash' in result ? result : null,
+                    error: result && 'error' in result ? result.error : undefined,
+                });
+                return;
+            }
+            if (msg.type === 'save') {
                 try {
                     const content = msg.content;
                     let data: Uint8Array;
                     if (content && typeof content === 'object' && content.text && content.encoding) {
-                        // CSV with non-UTF-8 encoding
                         data = iconv.encode(content.text, content.encoding);
                     } else if (typeof content === 'string') {
                         data = Buffer.from(content, 'utf-8');
@@ -130,182 +175,8 @@ export class ExcelDiffProvider {
                 } catch (err: any) {
                     vscode.window.showErrorMessage(`Save failed: ${err.message}`);
                 }
-            }
-        });
-    }
-
-    /**
-     * Attempt to get the HEAD version of a file from git or svn.
-     */
-    private async getVCSVersion(filePath: string): Promise<Buffer | null> {
-        // Try git first
-        try {
-            return await this.getGitVersion(filePath);
-        } catch {
-            // Not a git repo or git not available
-        }
-
-        // Try svn
-        try {
-            return await this.getSvnVersion(filePath);
-        } catch {
-            // Not an svn repo or svn not available
-        }
-
-        vscode.window.showErrorMessage(
-            'File is not tracked by Git or SVN. Use "Compare with Another File..." instead.'
-        );
-        return null;
-    }
-
-    private getGitVersion(filePath: string): Promise<Buffer> {
-        return new Promise((resolve, reject) => {
-            const cwd = dirname(filePath);
-
-            // First get git root
-            execFile('git', ['rev-parse', '--show-toplevel'], { cwd, encoding: 'utf8' }, (err, stdout) => {
-                if (err) return reject(err);
-
-                const gitRoot = stdout.trim();
-                const relPath = relative(gitRoot, filePath).replace(/\\/g, '/');
-
-                // Get HEAD version
-                execFile('git', ['show', `HEAD:${relPath}`], { cwd, encoding: 'buffer', maxBuffer: 50 * 1024 * 1024 }, (err, stdout) => {
-                    if (err) return reject(err);
-                    resolve(stdout as unknown as Buffer);
-                });
-            });
-        });
-    }
-
-    private getSvnVersion(filePath: string): Promise<Buffer> {
-        return new Promise((resolve, reject) => {
-            const cwd = dirname(filePath);
-            execFile('svn', ['cat', '-r', 'PREV', filePath], { cwd, encoding: 'buffer', maxBuffer: 50 * 1024 * 1024 }, (err, stdout) => {
-                if (err) return reject(err);
-                resolve(stdout as unknown as Buffer);
-            });
-        });
-    }
-
-    private getGitLog(filePath: string, limit: number = 20): Promise<{ hash: string; message: string; date: string }[]> {
-        return new Promise((resolve, reject) => {
-            const cwd = dirname(filePath);
-            execFile('git', ['log', '--oneline', '--follow', `-${limit}`, '--format=%H|%s|%ar', '--', filePath],
-                { cwd, encoding: 'utf8' }, (err, stdout) => {
-                    if (err) return reject(err);
-                    const lines = stdout.trim().split('\n').filter(Boolean);
-                    const entries = lines.map(line => {
-                        const [hash, ...rest] = line.split('|');
-                        const message = rest.slice(0, -1).join('|');
-                        const date = rest[rest.length - 1] || '';
-                        return { hash, message, date };
-                    });
-                    resolve(entries);
-                });
-        });
-    }
-
-    private getSvnLog(filePath: string, limit: number = 20): Promise<{ hash: string; message: string; date: string }[]> {
-        return new Promise((resolve, reject) => {
-            const cwd = dirname(filePath);
-            execFile('svn', ['log', '-l', String(limit), '--xml', filePath],
-                { cwd, encoding: 'utf8' }, (err, stdout) => {
-                    if (err) return reject(err);
-                    const entries: { hash: string; message: string; date: string }[] = [];
-                    const logEntries = stdout.match(/<logentry[^>]*>[\s\S]*?<\/logentry>/g) || [];
-                    for (const entry of logEntries) {
-                        const rev = entry.match(/revision="(\d+)"/)?.[1] || '';
-                        const msg = entry.match(/<msg>([\s\S]*?)<\/msg>/)?.[1]?.trim() || '';
-                        const date = entry.match(/<date>([\s\S]*?)<\/date>/)?.[1]?.substring(0, 10) || '';
-                        entries.push({ hash: rev, message: msg, date });
-                    }
-                    resolve(entries);
-                });
-        });
-    }
-
-    private getGitFileAtRevision(filePath: string, hash: string): Promise<Buffer> {
-        return new Promise((resolve, reject) => {
-            const cwd = dirname(filePath);
-            execFile('git', ['rev-parse', '--show-toplevel'], { cwd, encoding: 'utf8' }, (err, stdout) => {
-                if (err) return reject(err);
-                const gitRoot = stdout.trim();
-                const relPath = relative(gitRoot, filePath).replace(/\\/g, '/');
-                execFile('git', ['show', `${hash}:${relPath}`], { cwd, encoding: 'buffer', maxBuffer: 50 * 1024 * 1024 }, (err, stdout) => {
-                    if (err) return reject(err);
-                    resolve(stdout as unknown as Buffer);
-                });
-            });
-        });
-    }
-
-    private getSvnFileAtRevision(filePath: string, revision: string): Promise<Buffer> {
-        return new Promise((resolve, reject) => {
-            const cwd = dirname(filePath);
-            execFile('svn', ['cat', '-r', revision, filePath], { cwd, encoding: 'buffer', maxBuffer: 50 * 1024 * 1024 }, (err, stdout) => {
-                if (err) return reject(err);
-                resolve(stdout as unknown as Buffer);
-            });
-        });
-    }
-
-    async diffWithRevision(uri?: vscode.Uri) {
-        uri = uri || vscode.window.activeTextEditor?.document.uri;
-        if (!uri) {
-            vscode.window.showErrorMessage('No file selected for diff.');
-            return;
-        }
-
-        const filePath = uri.fsPath;
-        let vcsType: 'git' | 'svn' | null = null;
-        let entries: { hash: string; message: string; date: string }[] = [];
-
-        try {
-            entries = await this.getGitLog(filePath);
-            vcsType = 'git';
-        } catch {
-            try {
-                entries = await this.getSvnLog(filePath);
-                vcsType = 'svn';
-            } catch {
-                vscode.window.showErrorMessage('File is not tracked by Git or SVN.');
                 return;
             }
-        }
-
-        if (entries.length === 0) {
-            vscode.window.showInformationMessage('No revision history found for this file.');
-            return;
-        }
-
-        const items: (vscode.QuickPickItem & { hash: string })[] = entries.map(e => ({
-            label: vcsType === 'git' ? e.hash.substring(0, 7) : `r${e.hash}`,
-            description: e.message.length > 60 ? e.message.substring(0, 60) + '...' : e.message,
-            detail: e.date,
-            hash: e.hash,
-        }));
-
-        const selected = await vscode.window.showQuickPick(items, {
-            placeHolder: 'Select a revision to compare with',
-            matchOnDescription: true,
         });
-
-        if (!selected) return;
-
-        try {
-            let baseBuffer: Buffer;
-            if (vcsType === 'git') {
-                baseBuffer = await this.getGitFileAtRevision(filePath, selected.hash);
-            } else {
-                baseBuffer = await this.getSvnFileAtRevision(filePath, selected.hash);
-            }
-
-            const baseLabel = selected.label;
-            const currentLabel = 'Working';
-            this.openDiffPanel(uri, baseBuffer, `${vscode.workspace.asRelativePath(uri)} (${baseLabel} ↔ ${currentLabel})`, baseLabel);
-        } catch (err: any) {
-            vscode.window.showErrorMessage(`Failed to get revision: ${err.message}`);
-        }
     }
 }
