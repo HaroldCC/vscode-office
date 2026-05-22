@@ -217,6 +217,28 @@
     }
 }
 
+.filter-btn, .export-btn {
+    height: 28px;
+    padding: 0 10px;
+    border: 1px solid #d9d9d9;
+    border-radius: 4px;
+    background: #fff;
+    cursor: pointer;
+    font-size: 12px;
+    color: #555;
+
+    &:hover {
+        border-color: #40a9ff;
+        color: #1890ff;
+    }
+
+    &.active {
+        background: #e6f7ff;
+        border-color: #1890ff;
+        color: #0c66a8;
+    }
+}
+
 .blame-popover {
     position: fixed;
     bottom: 16px;

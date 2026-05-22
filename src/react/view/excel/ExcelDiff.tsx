@@ -5,6 +5,8 @@ import './ExcelDiff.less';
 import { loadSheets, detectEncoding } from "./excel_reader.ts";
 import { export_xlsx } from "./excel_writer.ts";
 import { computeDiff, DiffSheetData } from "./excel_diff.ts";
+import { filterDiff } from "./diff_filter.ts";
+import { exportDiffHtml } from "./diff_html.ts";
 import Spreadsheet from './x-spreadsheet/index';
 
 const ENCODINGS = [
@@ -63,6 +65,8 @@ export default function ExcelDiff() {
     const [leftRefState, setLeftRefState] = useState<Ref | null>(null);
     const [rightRefState, setRightRefState] = useState<Ref | null>(null);
     const [blamePopover, setBlamePopover] = useState<BlamePopover | null>(null);
+    const [onlyChanges, setOnlyChanges] = useState(false);
+    const diffResultRef = useRef<{ leftSheets: DiffSheetData[]; rightSheets: DiffSheetData[]; stats: any } | null>(null);
 
     const leftRef = useRef<any>(null);
     const rightRef = useRef<any>(null);
@@ -98,17 +102,25 @@ export default function ExcelDiff() {
                 const currentExcel = loadSheets(rightBuffer, fileExt, effectiveEncoding);
                 workbookRef.current = currentExcel.workbook || null;
                 const diffResult = computeDiff(baseExcel, currentExcel);
+                diffResultRef.current = diffResult;
 
                 setStats(diffResult.stats);
-                sheetsRef.current = { left: diffResult.leftSheets, right: diffResult.rightSheets };
+                let leftSheets = diffResult.leftSheets;
+                let rightSheets = diffResult.rightSheets;
+                if (onlyChanges) {
+                    const filtered = filterDiff(leftSheets, rightSheets);
+                    leftSheets = filtered.left;
+                    rightSheets = filtered.right;
+                }
+                sheetsRef.current = { left: leftSheets, right: rightSheets };
 
-                const rows = diffResult.leftSheets[0]?.changeRows || [];
+                const rows = leftSheets[0]?.changeRows || [];
                 changeRowsRef.current = rows;
                 setTotalChanges(rows.length);
                 setChangeIndex(-1);
 
-                renderSide(leftContainer!, diffResult.leftSheets, 'left');
-                renderSide(rightContainer!, diffResult.rightSheets, 'right', true);
+                renderSide(leftContainer!, leftSheets, 'left');
+                renderSide(rightContainer!, rightSheets, 'right', true);
                 setupScrollSync(leftContainer!, rightContainer!);
 
                 setLoading(false);
@@ -117,7 +129,7 @@ export default function ExcelDiff() {
                 setLoading(false);
             }
         }, 16);
-    }, []);
+    }, [onlyChanges]);
 
     useEffect(() => {
         handler.on("openDiff", (content: any) => {
@@ -183,7 +195,8 @@ export default function ExcelDiff() {
                 height: () => window.innerHeight - 80,
                 width: () => (window.innerWidth / 2) - 2,
             },
-        });
+            style: { freeze: 'A2' },
+        } as any);
 
         const sheetData = sheets.map(sheet => ({
             name: sheet.name,
@@ -309,6 +322,37 @@ export default function ExcelDiff() {
         handler.emit("requestBlame", { sheet: sheetName, row: ri, col: ci });
     }, []);
 
+    const onToggleOnlyChanges = useCallback(() => {
+        setOnlyChanges(v => !v);
+        if (diffDataRef.current) {
+            const { leftData, rightData, ext } = diffDataRef.current;
+            setTimeout(() => renderFromBase64(leftData, rightData, ext, encoding), 16);
+        }
+    }, [renderFromBase64, encoding]);
+
+    const onExportHtml = useCallback(async () => {
+        const dr = diffResultRef.current;
+        if (!dr) {
+            message.warning({ duration: 2, content: 'No diff loaded yet' });
+            return;
+        }
+        const html = exportDiffHtml(dr.leftSheets, dr.rightSheets, dr.stats, 'Office Diff Report');
+        try {
+            const blob = new Blob([html], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `diff-${Date.now()}.html`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            message.success({ duration: 2, content: 'Exported diff to HTML' });
+        } catch (err) {
+            message.error({ duration: 2, content: 'Export failed' });
+        }
+    }, []);
+
     return (
         <div className="excel-diff-viewer">
             <Spin spinning={loading} fullscreen={true} />
@@ -350,6 +394,16 @@ export default function ExcelDiff() {
                     </div>
                     <button className="nav-btn blame-btn" onClick={onBlameClick} title="Blame selected cell">
                         Blame
+                    </button>
+                    <button
+                        className={`nav-btn filter-btn ${onlyChanges ? 'active' : ''}`}
+                        onClick={onToggleOnlyChanges}
+                        title="Show only changed rows"
+                    >
+                        {onlyChanges ? '☑' : '☐'} Changes only
+                    </button>
+                    <button className="nav-btn export-btn" onClick={onExportHtml} title="Export diff as HTML report">
+                        Export
                     </button>
                     <div className="encoding-group">
                         <select
