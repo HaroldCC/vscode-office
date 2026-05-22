@@ -160,6 +160,24 @@ export default function Excel() {
                 currentEncodingRef.current = effectiveEncoding;
                 isCSV.current = ext?.match(/csv/i) !== null;
 
+                // Detect git conflict markers in CSV
+                if (isCSV.current) {
+                    try {
+                        const sample = new TextDecoder(effectiveEncoding).decode(res.slice(0, 32768));
+                        if (/(^|\n)<{7} /m.test(sample) && /\n={7}\n/.test(sample) && /\n>{7} /m.test(sample)) {
+                            message.warning({
+                                duration: 8,
+                                content: 'Git conflict markers detected. Use "Office: Open 3-Way Merge Editor" command to resolve safely.'
+                            });
+                        }
+                    } catch { /* ignore */ }
+                }
+
+                if (shouldLazyLoad(res.byteLength)) {
+                    const mb = (res.byteLength / 1024 / 1024).toFixed(1);
+                    message.info({ duration: 3, content: `Lazy mode (${mb}MB). Sheets load on demand.` });
+                }
+
                 let excelData;
                 let sheetData;
 
@@ -291,6 +309,11 @@ export default function Excel() {
             if (document.title.endsWith(DIRTY_MARKER)) {
                 document.title = document.title.slice(0, -DIRTY_MARKER.length);
             }
+        }).on("saveError", (errMsg: string) => {
+            message.error({
+                duration: 4,
+                content: `Save failed: ${errMsg}`,
+            });
         }).emit("init")
 
         return () => {

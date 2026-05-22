@@ -41,6 +41,29 @@ export function detectEncoding(buffer: ArrayBuffer): { encoding: string; confide
     return { encoding: 'utf-8', confidence: result?.confidence || 0 };
 }
 
+/**
+ * 检测 CSV 分隔符。在前 50 行内,统计每个候选分隔符的总出现次数,
+ * 若领先的分隔符出现次数 ≥ 第二名 × 1.5 且 ≥ 行数,采用之,否则 fallback ','。
+ */
+export function detectCsvDelimiter(text: string): string {
+    const candidates = [',', ';', '\t', '|'];
+    const lines = text.split(/\r?\n/, 50).filter(l => l.length > 0);
+    if (lines.length === 0) return ',';
+    const counts: number[] = candidates.map(d => {
+        let total = 0;
+        for (const line of lines) {
+            for (let i = 0; i < line.length; i++) if (line[i] === d) total++;
+        }
+        return total;
+    });
+    const sorted = candidates.map((d, i) => ({ d, n: counts[i] })).sort((a, b) => b.n - a.n);
+    const [top, second] = sorted;
+    if (top.n >= lines.length && top.n >= (second?.n || 0) * 1.5) {
+        return top.d;
+    }
+    return ',';
+}
+
 interface SheetInfo {
     name: string;
     rows: any;
@@ -240,7 +263,8 @@ export function loadSheets(buffer: ArrayBuffer, ext: string, encoding: string = 
     let wb;
     if (ext.toLowerCase() === ".csv") {
         const text = new TextDecoder(encoding).decode(ab);
-        wb = XLSX.read(text, { type: "string", raw: true });
+        const fs = detectCsvDelimiter(text);
+        wb = XLSX.read(text, { type: "string", raw: true, FS: fs });
     } else {
         wb = XLSX.read(ab, options);
     }
@@ -274,7 +298,8 @@ export function loadSingleSheet(
     let wb;
     if (ext.toLowerCase() === '.csv') {
         const text = new TextDecoder(encoding).decode(ab);
-        wb = XLSX.read(text, { type: 'string', raw: true });
+        const fs = detectCsvDelimiter(text);
+        wb = XLSX.read(text, { type: 'string', raw: true, FS: fs });
     } else {
         wb = XLSX.read(ab, { type: 'array', sheets: [sheetName], cellFormula: true, cellNF: true });
     }

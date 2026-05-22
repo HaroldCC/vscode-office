@@ -36,18 +36,21 @@ export function handleCommonEvent(uri: Uri, handler: Handler, encodingStatusBar?
             }
         })
         .on("save", async (content) => {
-            let res: Uint8Array;
-            if (content && typeof content === 'object' && content.text && content.encoding) {
-                // CSV with non-UTF-8 encoding: encode text using iconv-lite
-                res = iconv.encode(content.text, content.encoding);
-            } else if (Array.isArray(content)) {
-                res = new Uint8Array(content);
-            } else {
-                res = new TextEncoder().encode(content);
+            try {
+                let res: Uint8Array;
+                if (content && typeof content === 'object' && content.text && content.encoding) {
+                    res = iconv.encode(content.text, content.encoding);
+                } else if (Array.isArray(content)) {
+                    res = new Uint8Array(content);
+                } else {
+                    res = new TextEncoder().encode(content);
+                }
+                await workspace.fs.writeFile(uri, res)
+                fileSaveTimes[uri.toString()] = Date.now();
+                handler.emit("saveDone")
+            } catch (err: any) {
+                handler.emit("saveError", err?.message || String(err));
             }
-            await workspace.fs.writeFile(uri, res)
-            fileSaveTimes[uri.toString()] = Date.now();
-            handler.emit("saveDone")
         })
         .on('developerTool', () => vscode.commands.executeCommand('workbench.action.toggleDevTools'))
         .on('dispose', () => {
