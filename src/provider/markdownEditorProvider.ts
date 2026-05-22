@@ -1,4 +1,5 @@
 import { adjustImgPath, getWorkspacePath } from '@/common/fileUtil';
+import { EncodingStatusBar } from '@/common/encodingStatusBar';
 import { readFileSync, writeFileSync } from 'fs';
 import { basename, isAbsolute, parse, resolve } from 'path';
 import * as vscode from 'vscode';
@@ -8,6 +9,7 @@ import { Holder } from '../service/markdown/holder';
 import { MarkdownService } from '../service/markdownService';
 import { Global } from '@/common/global';
 import { platform } from 'os';
+import iconv from 'iconv-lite';
 
 /**
  * Markdown editor provider using Vditor as the editing engine.
@@ -20,11 +22,18 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     private extensionPath: string;
     private countStatus: vscode.StatusBarItem;
     private state: vscode.Memento;
+    private activeHandlers: Map<string, Handler> = new Map();
 
-    constructor(private context: vscode.ExtensionContext) {
+    constructor(private context: vscode.ExtensionContext, private encodingStatusBar: EncodingStatusBar) {
         this.extensionPath = context.extensionPath;
         this.countStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-        this.state = context.globalState
+        this.state = context.globalState;
+        this.encodingStatusBar.onEncodingChanged((uri, encoding) => {
+            const handler = this.activeHandlers.get(uri);
+            if (handler) {
+                handler.emit('changeEncoding', encoding);
+            }
+        });
     }
 
     /**
@@ -57,6 +66,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
     resolveCustomTextEditor(document: vscode.TextDocument, webviewPanel: vscode.WebviewPanel, token: vscode.CancellationToken): void | Thenable<void> {
         const uri = document.uri;
+        const uriStr = uri.toString();
         const webview = webviewPanel.webview;
         const folderPath = vscode.Uri.joinPath(uri, '..')
         webview.options = {
@@ -64,8 +74,19 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             localResourceRoots: this.getLocalResourceRoots(folderPath)
         }
         const handler = Handler.bind(webviewPanel, uri);
+        this.activeHandlers.set(uriStr, handler);
         this.handleMarkdown(document, handler, folderPath)
         handler.on('developerTool', () => vscode.commands.executeCommand('workbench.action.toggleDevTools'))
+
+        webviewPanel.onDidChangeViewState(e => {
+            if (e.webviewPanel.active) {
+                this.encodingStatusBar.bind(uriStr);
+            }
+        });
+        webviewPanel.onDidDispose(() => {
+            this.activeHandlers.delete(uriStr);
+        });
+        this.encodingStatusBar.bind(uriStr);
     }
 
     private handleMarkdown(document: vscode.TextDocument, handler: Handler, folderPath: vscode.Uri) {
@@ -102,7 +123,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
         /** Read file from disk and update internal state. */
         const reloadFromDisk = (): string => {
-            const fileContent = readFileSync(uri.fsPath, 'utf8').replace(/\r/g, '');
+            const encoding = this.encodingStatusBar.getEncoding(uri.toString());
+            const buf = readFileSync(uri.fsPath);
+            const fileContent = (encoding === 'utf-8' ? buf.toString('utf8') : iconv.decode(buf, encoding)).replace(/\r/g, '');
             content = fileContent;
             this.updateCount(content);
             return fileContent;
@@ -112,6 +135,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             handler.emit("open", buildOpenPayload())
             this.updateCount(content)
             this.countStatus.show()
+        }).on("changeEncoding", () => {
+            reloadFromDisk();
+            handler.emit("open", buildOpenPayload())
         }).on("externalUpdate", e => {
             if (lastManualSaveTime && Date.now() - lastManualSaveTime < 800) return;
             const updatedText = e.document.getText()?.replace(/\r/g, '');

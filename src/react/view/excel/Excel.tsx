@@ -11,14 +11,17 @@ export default function Excel() {
     const [loading, setLoading] = useState(true)
     const isCSV = useRef<boolean>(false)
     const keydownRef = useRef<((e: KeyboardEvent) => void) | null>(null)
+    const lastPathRef = useRef<string>('')
+    const lastExtRef = useRef<string>('')
     useEffect(() => {
         const container = document.getElementById('container');
 
-        handler.on("open", ({ path, ext }) => {
+        const renderExcel = (path: string, ext: string, encoding: string = 'utf-8') => {
             const startTime = Date.now();
             console.log('Loading Excel file...');
+            setLoading(true);
             fetch(path).then(response => response.arrayBuffer()).then(res => {
-                const { sheets, maxLength, maxCols } = loadSheets(res, ext);
+                const { sheets, maxLength, maxCols } = loadSheets(res, ext, encoding);
                 isCSV.current = ext?.match(/csv/i) !== null;
                 container.innerHTML = ''
                 const spreadSheet = new Spreadsheet(container, {
@@ -34,7 +37,6 @@ export default function Excel() {
                         height: () => window.innerHeight - 2,
                     }
                 });
-                // 移除旧的 keydown 监听器，避免重复绑定
                 if (keydownRef.current) {
                     window.removeEventListener('keydown', keydownRef.current);
                 }
@@ -53,6 +55,16 @@ export default function Excel() {
                 console.error(`Failed to load Excel file: ${error.message}`);
                 setLoading(false)
             });
+        };
+
+        handler.on("open", ({ path, ext, encoding }) => {
+            lastPathRef.current = path;
+            lastExtRef.current = ext;
+            renderExcel(path, ext, encoding);
+        }).on("changeEncoding", (encoding: string) => {
+            if (lastPathRef.current) {
+                renderExcel(lastPathRef.current, lastExtRef.current, encoding);
+            }
         }).on("saveDone", () => {
             message.success({
                 duration: 1,

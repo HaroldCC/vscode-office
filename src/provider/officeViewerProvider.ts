@@ -1,3 +1,4 @@
+import { EncodingStatusBar } from '@/common/encodingStatusBar';
 import { ReactApp } from '@/common/reactApp';
 import { readFileSync } from 'fs';
 import { extname } from 'path';
@@ -8,6 +9,7 @@ import { handleImage, isImage } from './handlers/imageHandler';
 import { handleZip } from './compress/zipHandler';
 import { handleRar } from './compress/rarHandler';
 import { handleCommonEvent } from './compress/commonHandler';
+import iconv from 'iconv-lite';
 
 /**
  * support view office files
@@ -15,9 +17,16 @@ import { handleCommonEvent } from './compress/commonHandler';
 export class OfficeViewerProvider implements vscode.CustomReadonlyEditorProvider {
 
     private extensionPath: string;
+    private activeHandlers: Map<string, Handler> = new Map();
 
-    constructor(private context: vscode.ExtensionContext) {
+    constructor(private context: vscode.ExtensionContext, private encodingStatusBar: EncodingStatusBar) {
         this.extensionPath = context.extensionPath;
+        this.encodingStatusBar.onEncodingChanged((uri, encoding) => {
+            const handler = this.activeHandlers.get(uri);
+            if (handler) {
+                handler.emit('changeEncoding', encoding);
+            }
+        });
     }
 
     bindCustomEditors(viewOption: { webviewOptions: vscode.WebviewPanelOptions }) {
@@ -30,6 +39,7 @@ export class OfficeViewerProvider implements vscode.CustomReadonlyEditorProvider
     }
     public resolveCustomEditor(document: vscode.CustomDocument, webviewPanel: vscode.WebviewPanel, token: vscode.CancellationToken): void | Thenable<void> {
         const uri = document.uri;
+        const uriStr = uri.toString();
         const webview = webviewPanel.webview;
         const folderPath = vscode.Uri.joinPath(uri, '..')
         webview.options = {
@@ -38,7 +48,19 @@ export class OfficeViewerProvider implements vscode.CustomReadonlyEditorProvider
         }
 
         const handler = Handler.bind(webviewPanel, uri)
-        handleCommonEvent(uri, handler)
+        this.activeHandlers.set(uriStr, handler);
+        handleCommonEvent(uri, handler, this.encodingStatusBar)
+
+        webviewPanel.onDidChangeViewState(e => {
+            if (e.webviewPanel.active) {
+                this.encodingStatusBar.bind(uriStr);
+            }
+        });
+        webviewPanel.onDidDispose(() => {
+            this.activeHandlers.delete(uriStr);
+            this.encodingStatusBar.hide();
+        });
+        this.encodingStatusBar.bind(uriStr);
 
         let route: string;
         const ext = extname(uri.fsPath).toLowerCase()
@@ -81,9 +103,18 @@ export class OfficeViewerProvider implements vscode.CustomReadonlyEditorProvider
                 break;
             case ".htm":
             case ".html":
-                webview.html = Util.buildPath(readFileSync(uri.fsPath, 'utf8'), webview, folderPath.fsPath);
+                const readHtml = () => {
+                    const encoding = this.encodingStatusBar.getEncoding(uriStr);
+                    const buf = readFileSync(uri.fsPath);
+                    const text = encoding === 'utf-8' ? buf.toString('utf8') : iconv.decode(buf, encoding);
+                    return text;
+                };
+                webview.html = Util.buildPath(readHtml(), webview, folderPath.fsPath);
                 Util.listen(webviewPanel, uri, () => {
-                    webviewPanel.webview.html = Util.buildPath(readFileSync(uri.fsPath, 'utf8'), webviewPanel.webview, folderPath.fsPath);
+                    webviewPanel.webview.html = Util.buildPath(readHtml(), webviewPanel.webview, folderPath.fsPath);
+                })
+                handler.on('changeEncoding', () => {
+                    webviewPanel.webview.html = Util.buildPath(readHtml(), webviewPanel.webview, folderPath.fsPath);
                 })
                 break;
             default:

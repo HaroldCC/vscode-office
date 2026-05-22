@@ -68,8 +68,8 @@ const convert = wb => {
     return { sheets, maxLength, maxCols };
 };
 
-export function loadSheets(buffer: ArrayBuffer, ext: string): ExcelData {
+export function loadSheets(buffer: ArrayBuffer, ext: string, encoding: string = 'utf-8'): ExcelData {
     const ab = new Uint8Array(buffer).buffer
-    const wb = ext.toLowerCase() == ".csv" ? XLSX.read(new TextDecoder("utf-8").decode(ab), { type: "string", raw: true }) : XLSX.read(ab, { type: "array" });
+    const wb = ext.toLowerCase() == ".csv" ? XLSX.read(new TextDecoder(encoding).decode(ab), { type: "string", raw: true }) : XLSX.read(ab, { type: "array" });
     return convert(wb);
 }

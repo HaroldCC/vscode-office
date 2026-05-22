@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { EncodingStatusBar } from './common/encodingStatusBar';
 import { MarkdownEditorProvider } from './provider/markdownEditorProvider';
 import { OfficeViewerProvider } from './provider/officeViewerProvider';
 import { HtmlService } from './service/htmlService';
@@ -14,10 +15,12 @@ export function activate(context: vscode.ExtensionContext) {
 	const viewOption = { webviewOptions: { retainContextWhenHidden: true, enableFindWidget: true } };
 	FileUtil.init(context)
 	ReactApp.init(context)
+	const encodingStatusBar = new EncodingStatusBar(context.globalState);
 	const markdownService = new MarkdownService(context);
-	const viewerInstance = new OfficeViewerProvider(context);
-	const markdownEditorProvider = new MarkdownEditorProvider(context)
+	const viewerInstance = new OfficeViewerProvider(context, encodingStatusBar);
+	const markdownEditorProvider = new MarkdownEditorProvider(context, encodingStatusBar)
 	context.subscriptions.push(
+		encodingStatusBar.registerCommand(),
 		vscode.commands.registerCommand('office.quickOpen', () => vscode.commands.executeCommand('workbench.action.quickOpen')),
 		vscode.commands.registerCommand('office.markdown.switch', (uri) => { markdownService.switchEditor(uri) }),
 		vscode.commands.registerCommand('office.markdown.paste', () => { markdownService.loadClipboardImage() }),

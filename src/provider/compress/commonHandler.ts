@@ -1,20 +1,23 @@
 import * as vscode from 'vscode';
 import { Handler } from "@/common/handler";
+import { EncodingStatusBar } from "@/common/encodingStatusBar";
 import { Uri, workspace } from 'vscode';
 import { extname } from 'path';
 
 const fileSaveTimes: Record<string, number> = {};
 
-export function handleCommonEvent(uri: Uri, handler: Handler) {
+export function handleCommonEvent(uri: Uri, handler: Handler, encodingStatusBar?: EncodingStatusBar) {
     const send = () => {
         const now = Date.now();
         const lastSaveTime = fileSaveTimes[uri.toString()];
         if (lastSaveTime && now - lastSaveTime < 100) {
             return;
         }
+        const encoding = encodingStatusBar?.getEncoding(uri.toString()) || 'utf-8';
         handler.emit("open", {
             ext: extname(uri.fsPath),
             path: handler.panel.webview.asWebviewUri(uri).with({ query: `nonce=${now.toString()}` }).toString(),
+            encoding,
         })
     }
     handler
