@@ -207,10 +207,10 @@ export default function Excel() {
             });
         };
 
-        handler.on("open", ({ path, ext, encoding }) => {
+        handler.on("open", ({ path, ext, encoding, isExplicit }) => {
             lastPathRef.current = path;
             lastExtRef.current = ext;
-            renderExcel(path, ext, encoding, !!encoding && encoding !== 'utf-8');
+            renderExcel(path, ext, encoding, isExplicit === true);
         }).on("changeEncoding", (encoding: string) => {
             if (lastPathRef.current) {
                 renderExcel(lastPathRef.current, lastExtRef.current, encoding, true);

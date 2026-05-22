@@ -14,10 +14,12 @@ export function handleCommonEvent(uri: Uri, handler: Handler, encodingStatusBar?
             return;
         }
         const encoding = encodingStatusBar?.getEncoding(uri.toString()) || 'utf-8';
+        const isExplicit = encodingStatusBar?.isExplicitlySet(uri.toString()) ?? false;
         handler.emit("open", {
             ext: extname(uri.fsPath),
             path: handler.panel.webview.asWebviewUri(uri).with({ query: `nonce=${now.toString()}` }).toString(),
             encoding,
+            isExplicit,
         })
     }
     handler
@@ -29,7 +31,7 @@ export function handleCommonEvent(uri: Uri, handler: Handler, encodingStatusBar?
         .on("fileChange", send)
         .on('detectedEncoding', (encoding: string) => {
             if (encodingStatusBar) {
-                encodingStatusBar.setEncoding(uri.toString(), encoding);
+                encodingStatusBar.setDetectedEncoding(uri.toString(), encoding);
             }
         })
         .on("save", async (content) => {
