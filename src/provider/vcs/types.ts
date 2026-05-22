@@ -6,7 +6,7 @@ export type Ref =
     | { kind: 'head' }
     | { kind: 'commit'; hash: string; label?: string; message?: string; date?: string }
     | { kind: 'stash'; index: number; message?: string }
-    | { kind: 'file'; uri: vscode.Uri }
+    | { kind: 'file'; uri: vscode.Uri; label?: string }
     | { kind: 'svn-working' }
     | { kind: 'svn-revision'; revision: string; message?: string; date?: string };
 
@@ -37,7 +37,7 @@ export function refLabel(ref: Ref): string {
         case 'head': return 'HEAD';
         case 'commit': return ref.label || ref.hash.substring(0, 7);
         case 'stash': return `stash@{${ref.index}}`;
-        case 'file': return ref.uri.path.split('/').pop() || 'file';
+        case 'file': return ref.label || ref.uri.path.split('/').pop() || 'file';
         case 'svn-working': return 'Working';
         case 'svn-revision': return `r${ref.revision}`;
     }

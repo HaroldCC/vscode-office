@@ -150,6 +150,46 @@
 			{
 				"command": "office.html.preview",
 				"title": "Preview HTML"
+			},
+			{
+				"command": "office.tortoise.svnLog",
+				"title": "TortoiseSVN: Show Log",
+				"category": "Office Viewer"
+			},
+			{
+				"command": "office.tortoise.gitLog",
+				"title": "TortoiseGit: Show Log",
+				"category": "Office Viewer"
+			},
+			{
+				"command": "office.tortoise.svnDiff",
+				"title": "TortoiseSVN: Diff",
+				"category": "Office Viewer"
+			},
+			{
+				"command": "office.tortoise.gitDiff",
+				"title": "TortoiseGit: Diff",
+				"category": "Office Viewer"
+			},
+			{
+				"command": "office.tortoise.svnBlame",
+				"title": "TortoiseSVN: Blame",
+				"category": "Office Viewer"
+			},
+			{
+				"command": "office.tortoise.gitBlame",
+				"title": "TortoiseGit: Blame",
+				"category": "Office Viewer"
+			},
+			{
+				"command": "office.tortoise.configureExternal",
+				"title": "Configure as Tortoise External Diff Tool",
+				"category": "Office Viewer"
+			},
+			{
+				"command": "office.tortoise.refreshLocator",
+				"title": "Refresh Tortoise Path Cache",
+				"category": "Office Viewer"
 			}
 		],
 		"keybindings": [
@@ -242,6 +282,36 @@
 					"command": "office.excel.diffWithRevision",
 					"when": "resourceExtname =~ /\\.(xlsx|xls|csv|xlsm|ods)/i",
 					"group": "3_compare@3"
+				},
+				{
+					"command": "office.tortoise.svnLog",
+					"when": "office.isWindows && config.vscode-office.tortoise.enabled && resourceExtname =~ /\\.(xlsx|xls|csv|xlsm|ods)/i",
+					"group": "4_tortoise@1"
+				},
+				{
+					"command": "office.tortoise.gitLog",
+					"when": "office.isWindows && config.vscode-office.tortoise.enabled && resourceExtname =~ /\\.(xlsx|xls|csv|xlsm|ods)/i",
+					"group": "4_tortoise@2"
+				},
+				{
+					"command": "office.tortoise.svnDiff",
+					"when": "office.isWindows && config.vscode-office.tortoise.enabled && resourceExtname =~ /\\.(xlsx|xls|csv|xlsm|ods)/i",
+					"group": "4_tortoise@3"
+				},
+				{
+					"command": "office.tortoise.gitDiff",
+					"when": "office.isWindows && config.vscode-office.tortoise.enabled && resourceExtname =~ /\\.(xlsx|xls|csv|xlsm|ods)/i",
+					"group": "4_tortoise@4"
+				},
+				{
+					"command": "office.tortoise.svnBlame",
+					"when": "office.isWindows && config.vscode-office.tortoise.enabled && resourceExtname =~ /\\.(xlsx|xls|csv|xlsm|ods)/i",
+					"group": "4_tortoise@5"
+				},
+				{
+					"command": "office.tortoise.gitBlame",
+					"when": "office.isWindows && config.vscode-office.tortoise.enabled && resourceExtname =~ /\\.(xlsx|xls|csv|xlsm|ods)/i",
+					"group": "4_tortoise@6"
 				}
 			]
 		},
@@ -545,6 +615,21 @@
 					"type": "array",
 					"default": ["xlsx", "xlsm", "xls", "csv", "ods"],
 					"description": "File extensions included in the Office SCM panel."
+				},
+				"vscode-office.tortoise.enabled": {
+					"type": "boolean",
+					"default": true,
+					"description": "Show TortoiseSVN/TortoiseGit commands in context menus (Windows only)."
+				},
+				"vscode-office.tortoise.svnPath": {
+					"type": "string",
+					"default": "",
+					"description": "Path to TortoiseProc.exe. Leave empty for auto-detection."
+				},
+				"vscode-office.tortoise.gitPath": {
+					"type": "string",
+					"default": "",
+					"description": "Path to TortoiseGitProc.exe. Leave empty for auto-detection."
 				}
 			}
 		}

@@ -45,6 +45,13 @@ export class ExcelDiffProvider {
         await this.openDiff(uri, refA, refB);
     }
 
+    /** 被外部 diff 工具(Tortoise)以 URI handler 调起 */
+    async diffWithExternalFiles(baseUri: vscode.Uri, mineUri: vscode.Uri, baseLabel: string, mineLabel: string) {
+        const refA: Ref = { kind: 'file', uri: baseUri, ...(baseLabel ? { label: baseLabel } as any : {}) };
+        const refB: Ref = { kind: 'file', uri: mineUri, ...(mineLabel ? { label: mineLabel } as any : {}) };
+        await this.openDiff(mineUri, refA, refB);
+    }
+
     async diffWithRevision(uri?: vscode.Uri) {
         uri = uri || vscode.window.activeTextEditor?.document.uri;
         if (!uri) {
