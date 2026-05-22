@@ -1,0 +1,171 @@
+.excel-diff-viewer {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #fff;
+}
+
+.excel-diff-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 16px;
+    background: #fafafa;
+    border-bottom: 1px solid #e8e8e8;
+    flex-shrink: 0;
+    height: 40px;
+
+    .toolbar-left {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+    }
+
+    .toolbar-right {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+    }
+
+    .legend-items {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+    }
+
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 12px;
+        color: #555;
+    }
+
+    .legend-color {
+        width: 12px;
+        height: 12px;
+        border-radius: 2px;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+    }
+
+    .legend-added {
+        background: #d4edda;
+    }
+
+    .legend-deleted {
+        background: #f8d7da;
+    }
+
+    .legend-modified {
+        background: #fff3cd;
+    }
+
+    .legend-stats {
+        display: flex;
+        gap: 10px;
+        font-size: 12px;
+        font-weight: 600;
+        font-family: monospace;
+
+        .stat-added { color: #28a745; }
+        .stat-deleted { color: #dc3545; }
+        .stat-modified { color: #d4a017; }
+    }
+
+    .nav-group {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        border: 1px solid #d9d9d9;
+        border-radius: 4px;
+        padding: 0 4px;
+        height: 28px;
+
+        .nav-btn {
+            width: 22px;
+            height: 22px;
+            border: none;
+            border-radius: 3px;
+            background: transparent;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 9px;
+            color: #555;
+
+            &:hover {
+                background: #e8e8e8;
+                color: #222;
+            }
+        }
+
+        .nav-indicator {
+            font-size: 11px;
+            color: #666;
+            min-width: 40px;
+            text-align: center;
+            font-family: monospace;
+        }
+    }
+
+    .encoding-group {
+        select {
+            height: 28px;
+            padding: 0 8px;
+            border: 1px solid #d9d9d9;
+            border-radius: 4px;
+            background: #fff;
+            font-size: 12px;
+            color: #333;
+            cursor: pointer;
+            outline: none;
+
+            &:hover {
+                border-color: #40a9ff;
+            }
+
+            &:focus {
+                border-color: #40a9ff;
+                box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.1);
+            }
+        }
+    }
+}
+
+.excel-diff-panels {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+.excel-diff-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+
+    .panel-header {
+        padding: 4px 12px;
+        background: #f0f0f0;
+        border-bottom: 1px solid #e0e0e0;
+        font-size: 11px;
+        font-weight: 600;
+        color: #666;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        flex-shrink: 0;
+    }
+
+    .panel-content {
+        flex: 1;
+        overflow: hidden;
+    }
+}
+
+.excel-diff-divider {
+    width: 2px;
+    background: #d0d0d0;
+    flex-shrink: 0;
+}
