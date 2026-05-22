@@ -3,9 +3,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { handler } from "../../util/vscode.ts";
 import VSCodeLogo from "../vscode.tsx";
 import './Excel.less';
-import { loadSheets } from "./excel_reader.ts";
+import { loadSheets, detectEncoding } from "./excel_reader.ts";
 import { export_xlsx } from "./excel_writer.ts";
 import Spreadsheet from './x-spreadsheet/index';
+
+const DIRTY_MARKER = ' ●'; // ● symbol for dirty indicator
 
 interface SearchMatch {
     ri: number;
@@ -25,6 +27,7 @@ export default function Excel() {
     const lastPathRef = useRef<string>('')
     const lastExtRef = useRef<string>('')
     const spreadsheetRef = useRef<any>(null)
+    const workbookRef = useRef<any>(null)
     const matchesRef = useRef<SearchMatch[]>([])
     const searchInputRef = useRef<HTMLInputElement>(null)
 
@@ -135,12 +138,23 @@ export default function Excel() {
     useEffect(() => {
         const container = document.getElementById('container');
 
-        const renderExcel = (path: string, ext: string, encoding: string = 'utf-8') => {
+        const renderExcel = (path: string, ext: string, encoding: string = 'utf-8', isEncodingExplicit: boolean = false) => {
             const startTime = Date.now();
             console.log('Loading Excel file...');
             setLoading(true);
             fetch(path).then(response => response.arrayBuffer()).then(res => {
-                const { sheets, maxLength, maxCols } = loadSheets(res, ext, encoding);
+                let effectiveEncoding = encoding;
+                // Auto-detect encoding for CSV when no explicit encoding was set
+                if (!isEncodingExplicit && ext?.match(/csv/i)) {
+                    const detected = detectEncoding(res);
+                    if (detected.confidence >= 0.7) {
+                        effectiveEncoding = detected.encoding;
+                        handler.emit('detectedEncoding', effectiveEncoding);
+                    }
+                }
+                const excelData = loadSheets(res, ext, effectiveEncoding);
+                const { sheets, maxLength, maxCols } = excelData;
+                workbookRef.current = excelData.workbook || null;
                 isCSV.current = ext?.match(/csv/i) !== null;
                 container.innerHTML = ''
                 const spreadSheet = new Spreadsheet(container, {
@@ -157,12 +171,20 @@ export default function Excel() {
                     }
                 });
                 spreadsheetRef.current = spreadSheet;
+
+                // Track dirty state — show indicator in document title
+                spreadSheet.change(() => {
+                    if (!document.title.endsWith(DIRTY_MARKER)) {
+                        document.title = document.title + DIRTY_MARKER;
+                    }
+                });
+
                 if (keydownRef.current) {
                     window.removeEventListener('keydown', keydownRef.current);
                 }
                 const onKeydown = (e: KeyboardEvent) => {
                     if ((e.ctrlKey || e.metaKey) && e.code == "KeyS") {
-                        export_xlsx(spreadSheet, ext);
+                        export_xlsx(spreadSheet, ext, workbookRef.current);
                     }
                     if ((e.ctrlKey || e.metaKey) && e.code == "KeyF") {
                         e.preventDefault();
@@ -188,16 +210,20 @@ export default function Excel() {
         handler.on("open", ({ path, ext, encoding }) => {
             lastPathRef.current = path;
             lastExtRef.current = ext;
-            renderExcel(path, ext, encoding);
+            renderExcel(path, ext, encoding, !!encoding && encoding !== 'utf-8');
         }).on("changeEncoding", (encoding: string) => {
             if (lastPathRef.current) {
-                renderExcel(lastPathRef.current, lastExtRef.current, encoding);
+                renderExcel(lastPathRef.current, lastExtRef.current, encoding, true);
             }
         }).on("saveDone", () => {
             message.success({
                 duration: 1,
                 content: 'Save done',
-            })
+            });
+            // Clear dirty marker
+            if (document.title.endsWith(DIRTY_MARKER)) {
+                document.title = document.title.slice(0, -DIRTY_MARKER.length);
+            }
         }).emit("init")
 
         return () => {

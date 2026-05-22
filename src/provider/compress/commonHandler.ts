@@ -27,6 +27,11 @@ export function handleCommonEvent(uri: Uri, handler: Handler, encodingStatusBar?
         })
         .on("init", send)
         .on("fileChange", send)
+        .on('detectedEncoding', (encoding: string) => {
+            if (encodingStatusBar) {
+                encodingStatusBar.setEncoding(uri.toString(), encoding);
+            }
+        })
         .on("save", async (content) => {
             const res = Array.isArray(content) ? new Uint8Array(content) : new TextEncoder().encode(content)
             await workspace.fs.writeFile(uri, res)

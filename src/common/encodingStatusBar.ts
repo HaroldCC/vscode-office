@@ -54,6 +54,14 @@ export class EncodingStatusBar {
         return this.encodingMap.get(uri) || 'utf-8';
     }
 
+    setEncoding(uri: string, encoding: string) {
+        this.encodingMap.set(uri, encoding);
+        this.state.update(`encoding_${uri}`, encoding);
+        if (this.currentUri === uri) {
+            this.statusBarItem.text = `$(file-code) ${this.getDisplayName(encoding)}`;
+        }
+    }
+
     private getDisplayName(encoding: string): string {
         const item = ENCODING_LIST.find(e => e.value === encoding);
         return item ? item.label : encoding.toUpperCase();
