@@ -110,6 +110,12 @@
 				"icon": "$(file-symlink-file)"
 			},
 			{
+				"command": "office.excel.diffWithRevision",
+				"title": "Compare with Revision...",
+				"category": "Office Viewer",
+				"icon": "$(git-compare)"
+			},
+			{
 				"command": "office.quickOpen",
 				"title": "Quick open",
 				"category": "ShortcutMenuBar",
@@ -179,6 +185,11 @@
 					"group": "navigation@-3"
 				},
 				{
+					"command": "office.excel.diffWithRevision",
+					"when": "resourceExtname =~ /\\.(xlsx|xls|csv|xlsm|ods)/i",
+					"group": "navigation@-2"
+				},
+				{
 					"when": "config.vscode-office.quickOpen",
 					"command": "office.quickOpen",
 					"group": "navigation@10"
@@ -226,6 +237,11 @@
 					"command": "office.excel.diffWithFile",
 					"when": "resourceExtname =~ /\\.(xlsx|xls|csv|xlsm|ods)/i",
 					"group": "3_compare@2"
+				},
+				{
+					"command": "office.excel.diffWithRevision",
+					"when": "resourceExtname =~ /\\.(xlsx|xls|csv|xlsm|ods)/i",
+					"group": "3_compare@3"
 				}
 			]
 		},

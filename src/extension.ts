@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { EncodingStatusBar } from './common/encodingStatusBar';
 import { MarkdownEditorProvider } from './provider/markdownEditorProvider';
 import { OfficeViewerProvider } from './provider/officeViewerProvider';
+import { ExcelDiffProvider } from './provider/excelDiffProvider';
 import { HtmlService } from './service/htmlService';
 import { MarkdownService } from './service/markdownService';
 import { Output } from './common/Output';
@@ -20,12 +21,16 @@ export function activate(context: vscode.ExtensionContext) {
 	const markdownService = new MarkdownService(context);
 	const viewerInstance = new OfficeViewerProvider(context, encodingStatusBar);
 	const markdownEditorProvider = new MarkdownEditorProvider(context, encodingStatusBar)
+	const excelDiffProvider = new ExcelDiffProvider(context);
 	context.subscriptions.push(
 		encodingStatusBar.registerCommand(),
 		vscode.commands.registerCommand('office.quickOpen', () => vscode.commands.executeCommand('workbench.action.quickOpen')),
 		vscode.commands.registerCommand('office.markdown.switch', (uri) => { markdownService.switchEditor(uri) }),
 		vscode.commands.registerCommand('office.markdown.paste', () => { markdownService.loadClipboardImage() }),
 		vscode.commands.registerCommand('office.html.preview', uri => HtmlService.previewHtml(uri, context)),
+		vscode.commands.registerCommand('office.excel.diffWithVCS', (uri) => excelDiffProvider.diffWithVCS(uri)),
+		vscode.commands.registerCommand('office.excel.diffWithFile', (uri) => excelDiffProvider.diffWithFile(uri)),
+		vscode.commands.registerCommand('office.excel.diffWithRevision', (uri) => excelDiffProvider.diffWithRevision(uri)),
 		vscode.window.registerCustomEditorProvider("cweijan.markdownViewer", markdownEditorProvider, viewOptionWithFind),
 		vscode.window.registerCustomEditorProvider("cweijan.markdownViewer.optional", markdownEditorProvider, viewOptionWithFind),
 		...viewerInstance.bindCustomEditors(viewOption)
