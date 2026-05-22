@@ -98,6 +98,18 @@
 				"category": "Office Viewer"
 			},
 			{
+				"command": "office.excel.diffWithVCS",
+				"title": "Compare with VCS Version",
+				"category": "Office Viewer",
+				"icon": "$(diff)"
+			},
+			{
+				"command": "office.excel.diffWithFile",
+				"title": "Compare with Another File...",
+				"category": "Office Viewer",
+				"icon": "$(file-symlink-file)"
+			},
+			{
 				"command": "office.quickOpen",
 				"title": "Quick open",
 				"category": "ShortcutMenuBar",
@@ -162,6 +174,11 @@
 		"menus": {
 			"editor/title": [
 				{
+					"command": "office.excel.diffWithVCS",
+					"when": "resourceExtname =~ /\\.(xlsx|xls|csv|xlsm|ods)/i",
+					"group": "navigation@-3"
+				},
+				{
 					"when": "config.vscode-office.quickOpen",
 					"command": "office.quickOpen",
 					"group": "navigation@10"
@@ -197,6 +214,18 @@
 					"command": "vscode-office.copy-response-body",
 					"group": "http@4",
 					"when": "editorTextFocus && resourceScheme == rest-client-response"
+				}
+			],
+			"explorer/context": [
+				{
+					"command": "office.excel.diffWithVCS",
+					"when": "resourceExtname =~ /\\.(xlsx|xls|csv|xlsm|ods)/i",
+					"group": "3_compare@1"
+				},
+				{
+					"command": "office.excel.diffWithFile",
+					"when": "resourceExtname =~ /\\.(xlsx|xls|csv|xlsm|ods)/i",
+					"group": "3_compare@2"
 				}
 			]
 		},
@@ -527,6 +556,7 @@
 		"file-type": "^19.6.0",
 		"highlight.js": "^11.10.0",
 		"iconv-lite": "^0.6.3",
+		"jschardet": "^3.1.4",
 		"katex": "^0.16.2",
 		"markdown-it": "^14.1.0",
 		"markdown-it-anchor": "^9.2.0",
