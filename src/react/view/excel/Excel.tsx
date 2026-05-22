@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { handler } from "../../util/vscode.ts";
 import VSCodeLogo from "../vscode.tsx";
 import './Excel.less';
-import { loadSheets, detectEncoding } from "./excel_reader.ts";
+import { loadSheets, detectEncoding, shouldLazyLoad, loadSheetNames, loadSingleSheet } from "./excel_reader.ts";
 import { export_xlsx } from "./excel_writer.ts";
 import Spreadsheet from './x-spreadsheet/index';
 
@@ -30,6 +30,11 @@ export default function Excel() {
     const workbookRef = useRef<any>(null)
     const matchesRef = useRef<SearchMatch[]>([])
     const searchInputRef = useRef<HTMLInputElement>(null)
+    const bufferRef = useRef<ArrayBuffer | null>(null);
+    const loadedSheetsRef = useRef<Set<string>>(new Set());
+    const allSheetNamesRef = useRef<string[]>([]);
+    const isLazyModeRef = useRef(false);
+    const currentEncodingRef = useRef<string>('utf-8');
 
     const doSearch = useCallback((text: string) => {
         setSearchDirty(false);
@@ -144,7 +149,6 @@ export default function Excel() {
             setLoading(true);
             fetch(path).then(response => response.arrayBuffer()).then(res => {
                 let effectiveEncoding = encoding;
-                // Auto-detect encoding for CSV when no explicit encoding was set
                 if (!isEncodingExplicit && ext?.match(/csv/i)) {
                     const detected = detectEncoding(res);
                     if (detected.confidence >= 0.7) {
@@ -152,19 +156,47 @@ export default function Excel() {
                         handler.emit('detectedEncoding', effectiveEncoding);
                     }
                 }
-                const excelData = loadSheets(res, ext, effectiveEncoding);
-                const { sheets, maxLength, maxCols } = excelData;
-                workbookRef.current = excelData.workbook || null;
+
+                currentEncodingRef.current = effectiveEncoding;
                 isCSV.current = ext?.match(/csv/i) !== null;
-                container.innerHTML = ''
+
+                let excelData;
+                let sheetData;
+
+                if (shouldLazyLoad(res.byteLength)) {
+                    isLazyModeRef.current = true;
+                    bufferRef.current = res;
+                    const sheetNames = loadSheetNames(res, ext);
+                    allSheetNamesRef.current = sheetNames;
+                    excelData = loadSingleSheet(res, ext, sheetNames[0], effectiveEncoding);
+                    loadedSheetsRef.current = new Set([sheetNames[0]]);
+
+                    // Create placeholder sheets for unloaded tabs
+                    sheetData = sheetNames.map((name, idx) => {
+                        if (idx === 0) return excelData.sheets[0];
+                        return { name, rows: { 0: { cells: { 0: { text: 'Loading...' } } } } };
+                    });
+                } else {
+                    isLazyModeRef.current = false;
+                    bufferRef.current = null;
+                    excelData = loadSheets(res, ext, effectiveEncoding);
+                    sheetData = excelData.sheets;
+                    allSheetNamesRef.current = excelData.sheets.map(s => s.name);
+                    loadedSheetsRef.current = new Set(allSheetNamesRef.current);
+                }
+
+                const { maxLength, maxCols } = excelData;
+                workbookRef.current = excelData.workbook || null;
+
+                container.innerHTML = '';
                 const spreadSheet = new Spreadsheet(container, {
                     showToolbar: false,
                     row: {
-                        len: maxLength + 50,
+                        len: (maxLength || 100) + 50,
                         height: 30,
                     },
                     col: {
-                        len: maxCols,
+                        len: maxCols || 26,
                     },
                     view: {
                         height: () => window.innerHeight - 2,
@@ -172,12 +204,47 @@ export default function Excel() {
                 });
                 spreadsheetRef.current = spreadSheet;
 
-                // Track dirty state — show indicator in document title
                 spreadSheet.change(() => {
                     if (!document.title.endsWith(DIRTY_MARKER)) {
                         document.title = document.title + DIRTY_MARKER;
                     }
                 });
+
+                // Hook into sheet tab switching for lazy loading
+                if (isLazyModeRef.current && spreadSheet.bottombar) {
+                    const origSwap = spreadSheet.bottombar.swapFunc;
+                    spreadSheet.bottombar.swapFunc = (index: number) => {
+                        const sheetName = allSheetNamesRef.current[index];
+                        if (sheetName && !loadedSheetsRef.current.has(sheetName) && bufferRef.current) {
+                            const singleData = loadSingleSheet(
+                                bufferRef.current,
+                                lastExtRef.current,
+                                sheetName,
+                                currentEncodingRef.current
+                            );
+                            loadedSheetsRef.current.add(sheetName);
+                            const loadedSheet = singleData.sheets[0];
+                            if (loadedSheet && spreadSheet.datas[index]) {
+                                const d = spreadSheet.datas[index];
+                                // Update the DataProxy's row data
+                                if (d.rows && d.rows.setData) {
+                                    d.rows.setData(loadedSheet.rows);
+                                } else {
+                                    d.rows._ = loadedSheet.rows;
+                                }
+                                // Update column widths
+                                if (loadedSheet.cols) {
+                                    for (const ci of Object.keys(loadedSheet.cols)) {
+                                        if (d.cols && d.cols.setWidth) {
+                                            d.cols.setWidth(Number(ci), loadedSheet.cols[ci].width);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        origSwap(index);
+                    };
+                }
 
                 if (keydownRef.current) {
                     window.removeEventListener('keydown', keydownRef.current);
@@ -197,8 +264,8 @@ export default function Excel() {
                 };
                 keydownRef.current = onKeydown;
                 window.addEventListener('keydown', onKeydown);
-                setLoading(false)
-                spreadSheet.loadData(sheets);
+                setLoading(false);
+                spreadSheet.loadData(sheetData);
                 const endTime = Date.now();
                 console.log(`Excel file loaded successfully. Time elapsed: ${endTime - startTime}ms`);
             }).catch(error => {

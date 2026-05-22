@@ -247,3 +247,37 @@ export function loadSheets(buffer: ArrayBuffer, ext: string, encoding: string = 
 
     return convert(wb);
 }
+
+const LAZY_LOAD_THRESHOLD = 10 * 1024 * 1024; // 10MB
+
+export function shouldLazyLoad(bufferSize: number): boolean {
+    return bufferSize > LAZY_LOAD_THRESHOLD;
+}
+
+export function loadSheetNames(buffer: ArrayBuffer, ext: string): string[] {
+    if (ext.toLowerCase() === '.csv') {
+        return ['Sheet1'];
+    }
+    const ab = new Uint8Array(buffer).buffer;
+    const wb = XLSX.read(ab, { type: 'array', bookSheets: true });
+    return wb.SheetNames;
+}
+
+export function loadSingleSheet(
+    buffer: ArrayBuffer,
+    ext: string,
+    sheetName: string,
+    encoding: string = 'utf-8'
+): ExcelData {
+    const ab = new Uint8Array(buffer).buffer;
+
+    let wb;
+    if (ext.toLowerCase() === '.csv') {
+        const text = new TextDecoder(encoding).decode(ab);
+        wb = XLSX.read(text, { type: 'string', raw: true });
+    } else {
+        wb = XLSX.read(ab, { type: 'array', sheets: [sheetName], cellFormula: true, cellNF: true });
+    }
+
+    return convert(wb);
+}
