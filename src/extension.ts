@@ -8,20 +8,27 @@ import { MarkdownService } from './service/markdownService';
 import { Output } from './common/Output';
 import { FileUtil } from './common/fileUtil';
 import { ReactApp } from './common/reactApp';
+import { GitApiHelper } from './provider/vcs/gitApi';
+import { OfficeScmContribution } from './provider/vcs/scmContribution';
 const httpExt = require('./bundle/extension');
 
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
 	keepOriginDiff();
-	activeHTTP(context)
+	activeHTTP(context);
 	const viewOption = { webviewOptions: { retainContextWhenHidden: true, enableFindWidget: false } };
 	const viewOptionWithFind = { webviewOptions: { retainContextWhenHidden: true, enableFindWidget: true } };
-	FileUtil.init(context)
-	ReactApp.init(context)
+	FileUtil.init(context);
+	ReactApp.init(context);
 	const encodingStatusBar = new EncodingStatusBar(context.globalState);
 	const markdownService = new MarkdownService(context);
 	const viewerInstance = new OfficeViewerProvider(context, encodingStatusBar);
-	const markdownEditorProvider = new MarkdownEditorProvider(context, encodingStatusBar)
+	const markdownEditorProvider = new MarkdownEditorProvider(context, encodingStatusBar);
 	const excelDiffProvider = new ExcelDiffProvider(context);
+
+	GitApiHelper.instance.ensureInit().catch((err) => Output.debug('git api init: ' + err));
+	const scmContribution = new OfficeScmContribution();
+	scmContribution.activate(context).catch((err) => Output.debug('scm init: ' + err));
+
 	context.subscriptions.push(
 		encodingStatusBar.registerCommand(),
 		vscode.commands.registerCommand('office.quickOpen', () => vscode.commands.executeCommand('workbench.action.quickOpen')),
