@@ -1,10 +1,10 @@
 {
-	"name": "vscode-office-enhanced",
-	"displayName": "Office Viewer Enhanced",
-	"description": "Preview Word, Excel, PDF, Markdown, and more in VS Code and Kiro. Export self-contained HTML with embedded images and render Mermaid v11 diagrams.",
-	"version": "3.7.5",
-	"publisher": "rjwang",
-	"icon": "images/logo-new.png",
+	"name": "vscode-office-pro",
+	"displayName": "Office Suite Viewer",
+	"description": "Preview Word, Excel, PDF, Markdown, and more in VS Code. Compare Excel/CSV with VCS revisions, cell-level blame, 3-way merge editor, TortoiseSVN/Git integration, self-contained HTML export, and Mermaid v11 diagrams.",
+	"version": "1.0.0",
+	"publisher": "haroldcc",
+	"icon": "images/logo-pro.png",
 	"engines": {
 		"vscode": "^1.64.0"
 	},
@@ -20,13 +20,12 @@
 		"Other"
 	],
 	"bugs": {
-		"url": "https://github.com/rjwang1982/vscode-office/issues",
-		"email": "wangrenjun@gmail.com"
+		"url": "https://github.com/haroldcc/vscode-office/issues"
 	},
-	"homepage": "https://github.com/rjwang1982/vscode-office/blob/master/README.md",
+	"homepage": "https://github.com/haroldcc/vscode-office/blob/master/README.md",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/rjwang1982/vscode-office.git"
+		"url": "https://github.com/haroldcc/vscode-office.git"
 	},
 	"activationEvents": [
 		"onStartupFinished"
